@@ -1,0 +1,39 @@
+--- 
+title: "Introducción a Machine Learning con R"
+author: "Felipe González"
+date: "`r Sys.Date()`"
+site: bookdown::bookdown_site
+documentclass: book
+bibliography: [book.bib, packages.bib]
+biblio-style: apalike
+link-citations: yes
+description: "Introducción a técnicas de machine learning usando tidymodels"
+---
+
+# Temario
+
+1. Introducción a machine learning. Aprendizaje supervisado y no supervisado.
+2. La tarea predictiva fundamental y su evaluación. Desempeño de modelos predictivos en el contexto de un problema de decisión.
+3. Métodos basados en regresión vs métodos locales
+4. Subajuste y sobreajuste
+5. Ingeniería de entradas para modelos predictivos
+6. Problemas de clasificación. Tipos de error y evaluación
+7. Probabilidad en problemas de clasificación
+8. Introducción a redes neuronales
+9. Ideas básicas para redes neuronales profundas
+10. Árboles de decisión
+11. Bosques aleatorios
+12.Métodos de boosting para árboles
+12. Discusión de otros métodos. Implementación exitosa de proyectos de machine learning
+
+## Material
+
+- El código para este curso está [en este repositorio de github](https://github.com/felipegonzalez/intro-ml-em-2021). 
+- [Notas de clase](https://intro-ml-em.netlify.app/index.html).
+- Usaremos también Rstudio cloud para hacer prácticas optativas
+
+
+
+## Instructor
+
+- [Felipe González](https://github.com/felipegonzalez)

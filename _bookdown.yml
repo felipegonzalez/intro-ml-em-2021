@@ -1,0 +1,6 @@
+book_filename: "intro-ml"
+delete_merged_file: true
+new_session: true
+language:
+  ui:
+    chapter_name: " "
