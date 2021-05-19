@@ -13,7 +13,7 @@ pre code {
   white-space: inherit;
 }
 
-.comentario {
+.resumen {
   padding: 1em 1em 1em 4em;
   margin-bottom: 10px;
   background: #f4b9ab;
@@ -21,8 +21,25 @@ pre code {
   font-size: 18px;
 }
 
-.comentario:before {
+.resumen:before {
     content: "\f0a4";
+    font-family: FontAwesome;
+    left:10px;
+    position:absolute;
+    top:5px;
+    font-size: 40px;
+ }
+
+.observacion {
+  padding: 1em 1em 1em 4em;
+  margin-bottom: 10px;
+  background: #d6d6d6;
+  position:relative;
+  font-size: 18px;
+}
+
+.observacion:before {
+    content: "\f121";
     font-family: FontAwesome;
     left:10px;
     position:absolute;

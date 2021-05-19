@@ -70,6 +70,7 @@ Por ejemplo, consideramos el siguiente problema (tomado de [este sitio](http://r
 
 ```{r, message = FALSE}
 library(tidyverse)
+library(patchwork)
 library(imager)
 # Datos: http://raphael.candelier.fr/?blog=Image%20Moments
 medidor_vid <- load.video("figuras/gauge_raw.mp4", fps = 5)
@@ -242,3 +243,265 @@ efectivo cuando hay cantidades grandes de datos poco ruidosos, y aunque
 en este ejemplo los dos enfoques dan resultados razonables, 
 en procesamiento de imágenes es cada vez más común usar redes neuronales
 grandes para resolver este tipo de problemas.
+
+```{block2, type="observacion"}
+En este ejemplo utilizamos el paquete **keras**, que hace una
+interfaz con la librería *keras* de python. La mayor parte de los cálculos
+se hacen con *tensorflow* (aunque hay otras opciones), 
+que puede configurarse para correr en GPU.
+```
+
+## Ejemplo:  mediciones costosas o imprecisas
+
+En algunos casos, el estándar de la medición que nos interesa es uno
+que es costoso de cumplir: a veces se dice que *etiquetar* los datos es
+costoso. Un ejemplo es producir las estimaciones de ingreso trimestral de 
+un hogar que se recolecta en la ENIGH (ver [aquí](https://www.inegi.org.mx/programas/enigh/nc/2018/)). En este caso particular, se utiliza esta encuesta como datos etiquetados 
+para poder estimar el ingreso de
+otros hogares que no están en la muestra del ENIGH, pero para los que
+se conocen características de las vivienda, características de los integrantes, y otras medidas que son más fácilmente recolectadas en encuestas
+de opinión.
+
+Veremos otro ejemplo: estimar el valor de mercado de las casas en venta
+de una región.
+Es posible que tengamos un inventario de casas con varias de sus características
+registradas, pero producir estimaciones correctas de su valor de mercado puede
+requerir de inspecciones costosas de expertos, o tomar aproximaciones imprecisas de esta cantidad (por ejemplo, cuál es el precio ofertado).
+
+Utilizaremos datos de casas que se [vendieron en Ames, Iowa en cierto periodo](https://www.kaggle.com/prevek18/ames-housing-dataset). En este caso,
+conocemos el valor a la que se vendió una casa. Buscamos producir una estimación
+para otras casas para las cuales conocemos características como su 
+localización, superficie en metros cuadrados, año de construcción, espacio
+de estacionamiento, y así sucesivamente. Estas medidas son más fáciles de recolectar, y quisiéramos producir una estimación de su precio de venta
+en términos de estas medidas.
+
+
+```{r, message = FALSE}
+source("R/casas_traducir_geo.R")
+casas %>% glimpse()
+```
+En este ejemplo intentaremos una forma simple de predecir.
+
+```{r, fig.width=8, fig.height=4}
+set.seed(68821)
+library(tidymodels)
+casas_split <- initial_split(casas, prop = 0.75)
+casas_entrena <- training(casas_split)
+g_1 <- ggplot(casas_entrena, aes(x = precio_miles)) +
+  geom_histogram()
+g_2 <- ggplot(casas_entrena, aes(x = area_hab_m2, 
+                          y = precio_miles, 
+                          colour = condicion_venta)) +
+  geom_point() 
+g_1 + g_2
+```
+La variable de condición de venta no podemos utilizarla. Podemos
+ver en lugar de eso solamente las de condición normal. También
+consideramos, por ejemplo, la calidad general de terminados:
+
+```{r}
+ggplot(casas_entrena %>% filter(condicion_venta == "Normal") %>% 
+         mutate(calidad_grupo = cut(calidad_gral, breaks = c(0, 5, 7, 8, 10))), 
+       aes(x = area_hab_m2, 
+           y = precio_miles,
+           colour = calidad_grupo)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, formula = "y ~ x")
+```
+
+Vemos que estas dos variables que hemos usado explican buena parte
+de la variación de los precios de las casas, y quizá podríamos proponer una fórmula simple de la forma:
+
+$$Precio = a_{calidad} + b_{calidad}Area$$
+
+donde los valores de  $a_{calidad}, b_{calidad}$ podríamos estimarlos de los datos, e indica
+la pendiente de las rectas de la gráfica de arriba dependiendo de la calificación
+de la calidad de los terminados.
+
+Nuestro proceso comenzaría entonces construir los datos
+para usar en el modelo:
+
+```{r}
+receta_casas <- 
+  recipe(precio_miles ~ area_hab_m2 + calidad_gral + condicion_venta, 
+         data = casas_entrena) %>% 
+  step_filter(condicion_venta == "Normal") %>% 
+  step_select(-condicion_venta, skip = TRUE) %>% 
+  step_cut(calidad_gral, breaks = c(3, 5, 7, 8)) %>% 
+  step_dummy(calidad_gral) %>% 
+  step_interact(terms = ~ area_hab_m2:starts_with("calidad_gral")) 
+```
+
+Definimos el tipo de modelo que queremos ajustar
+
+```{r}
+casas_modelo <- linear_reg() %>% 
+  set_engine("lm")
+```
+
+
+```{r}
+workflow_casas <- workflow() %>% 
+  add_recipe(receta_casas) %>% 
+  add_model(casas_modelo)
+```
+
+Ajustamos el flujo
+
+```{r}
+ajuste <- fit(workflow_casas, casas_entrena)
+ajuste
+```
+Y ahora podemos hacer predicciones:
+
+```{r}
+set.seed(8)
+casas_prueba <- testing(casas_split) 
+ejemplos <- casas_prueba%>% sample_n(5)
+predict(ajuste, ejemplos) %>% 
+  bind_cols(ejemplos %>% select(precio_miles, area_hab_m2)) %>% 
+  arrange(desc(precio_miles))
+```
+
+Y finalmente podemos evaluar nuestro modelo. En este caso usamos
+el error promedio porcentual:
+
+```{r}
+metricas <- metric_set(mape, mae, rmse)
+metricas(casas_prueba %>% bind_cols(predict(ajuste, casas_prueba)), 
+     truth = precio_miles, estimate = .pred)
+```
+```{r, fig.width =5, fig.height=4}
+ggplot(casas_prueba %>% bind_cols(predict(ajuste, casas_prueba)),
+       aes(x = .pred, y = precio_miles)) +
+  geom_point() +
+  geom_abline(colour = "red") 
+```
+Este modelo tiene algunos defectos y todavía tiene error considerablemente
+grande. 
+
+
+## Aprendizaje supervisado y no supervisado
+
+Las tareas de aprendizaje se dividen en dos grandes partes: aprendizaje
+supervisado y aprendizaje no supervisado.
+
+
+En **Aprendizaje supervisado** buscamos construir un modelo o algoritmo para
+predecir o estimar un *target* o una *respuesta* a partir
+de ciertas variables de entrada.
+
+Predecir y estimar, en este contexto, se refieren a cosas similares. Generalmente
+se usa
+*predecir* cuando se trata de variables que no son observables ahora, sino en el futuro,
+y 
+*estimar* cuando nos interesan variables actuales que no podemos observar ahora
+por costos o por la naturaleza del fenómeno.
+
+
+Por ejemplo, para identificar a los clientes con alto riesgo de impago
+de tarjeta de crédito, utilizamos datos históricos de clientes que han pagado
+y no han pagado. Con estos datos entrenamos un algoritmo para detectar anticipadamente los
+clientes con alto riesgo de impago.
+
+Usualmente dividimos los problemas de aprendizaje supervisado en dos tipos,
+dependiendo de la variables salida:
+
+- Problemas de **regresión**: cuando la salida es una variable numérica. El ejemplo
+de estimación de ingreso es un problema de regresión
+- Problemas de **clasificación**: cuando la salida es una variable categórica. El
+ejemplo de detección de dígitos escritos a manos es un problema de clasificación.
+
+
+En contraste, en  **Aprendizaje no supervisado**  no hay *target*
+o variable respuesta. Buscamos modelar y entender las relaciones entre variables
+y entre observaciones, o patrones importantes o interesantes en los datos.
+
+Los problemas supervisados tienen un objetivo claro: hacer las mejores
+predicciones posibles bajo ciertas restricciones. Los problemas no supervisados
+tienden a tener objetivos más vagos, y por lo mismo pueden ser más difíciles.
+
+## Ejemplo: construyendo descriptores de películas
+
+Un tipo de análisis que se considera análisis no supervisado es la reducción de
+dimensionalidad. En este tipo de análisis buscamos unas cuantas variables
+derivadas que permitan reconstruir los datos originales, es decir: buscamos
+obtener unas pocas mediciones que condensen la información contenida 
+en un número grande de mediciones. Esto es posible cuando esas mediciones
+tiene patrones de asociación.
+
+Consideremos las calificaciones de usuarios a películas de Netflix. 
+
+```{r leertabla1}
+pelis_nombres <- read_csv('./datos/netflix/movies_title_fix.csv', col_names = FALSE, na = c("", "NA", "NULL"))
+names(pelis_nombres) <- c('peli_id','año','nombre')
+dat_netflix <- read_csv( "./datos/netflix/dat_muestra_nflix.csv", progress = FALSE) %>% 
+    select(-usuario_id_orig) %>% 
+    mutate(usuario_id = as.integer(as.factor(usuario_id)))
+head(dat_netflix)
+dat_netflix %>% tally
+```
+
+Nos interesan principalmente las calificaciones centradas por usuario,
+para evitar efectos de heterogeneidad en el uso de la escala:
+
+```{r}
+dat_netflix <- dat_netflix %>% 
+  group_by(usuario_id) %>% 
+  mutate(calif_centrada = calif - mean(calif, na.rm = TRUE))
+num_evals <- dat_netflix %>% 
+  group_by(peli_id) %>% 
+  summarise(n = n())
+```
+
+Y ahora buscamos reducir estos datos a cinco dimensiones: ¿existen
+5 valores o dimensiones que describan películas, de forma que sabiendo la afinidad de
+cada usario por esas dimensiones podamos recuperar la calificación que
+dio a cada película?
+
+```{r}
+library(Matrix)
+X <- sparseMatrix(i = dat_netflix$usuario_id,
+                  j = dat_netflix$peli_id,
+                  x = dat_netflix$calif_centrada)
+dim(X)
+```
+Hacemos nuestra aproximación de rango 5:
+
+```{r}
+descomp_netflix <- irlba::irlba(X, nu = 5, nv = 5)
+```
+
+Y ahora examinamos las cinco dimensiones que acabamos de encontrar:
+
+```{r, warning = FALSE}
+peliculas_desc <- descomp_netflix$v %>% 
+  as_tibble() %>% 
+  mutate(peli_id = row_number()) %>% 
+  left_join(pelis_nombres) %>% 
+  left_join(num_evals)
+```
+```{r}
+library(ggrepel)
+set.seed(134)
+# para poder graficar más fácilmente, filtramos número de películas
+ggplot(peliculas_desc %>% filter(n > 3000) %>%
+         filter(V2^2 + V3^2 > 0.001) %>% 
+         sample_n(200), 
+       aes(x = V2, y = V3, label = nombre)) +
+  geom_point(colour = "red") + 
+  geom_text_repel(colour = "gray40", size = 3, 
+                  max.overlaps = 20, 
+                  max.time = 2) 
+```
+
+En esta gráfica de ejemplo, tenemos dos descriptores numéricos de cada
+película asociados con distintas inclinaciones de cada persona: por ejemplo,
+algunas personas tienen preferencias en el cuadrante superior derecho: si están
+ahí, es probable que prefieran pelínculas como *The Royal Tenenbaums* o *Pulp Fiction*
+en lugar de *Dirty Dancing* o *Miss Congeniality*.
+
+¿De dónde salen estas dimensiones? De intentar reproducir las calificaciones
+observadas con un número bajo de dimensiones. Cuando optimizamos para encontrar
+esta representación compacta, estas dimensiones latentes necesariamente
+capturan patrones generales en los datos (cuando éstos existen).
