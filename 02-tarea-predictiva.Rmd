@@ -34,10 +34,11 @@ definición de *cercana* puede depender del problema particular.
 
 Típicamente nos interesa hacer más de una predicción individual, y evaluar
 el desempeño en una población dada para la cual no conocemos la respuesta.
-Así que quisieramos evaluar varios casos nuevos, que de preferencia son una muestra
+Así que quisiéramos evaluar varios casos nuevos, que de preferencia son una muestra
 grande
 del universo de datos para los que nos interesa hacer predicciones. Para
-esto necesitamos un **conjunto de datos de prueba** suficientemente grande, que denotamos por:
+esto necesitamos un **conjunto de datos de prueba** suficientemente grande y representativo, 
+que denotamos por:
 
 $${\mathcal T} = (\mathbf{x}^{(1)}, \mathbf{y}^{(1)}), (\mathbf{x}^{(1)}, \mathbf{y}^{(1)}), \ldots, (\mathbf{x}^{(m)}, \mathbf{y}^{(m)}),$$
 
@@ -45,7 +46,7 @@ $${\mathcal T} = (\mathbf{x}^{(1)}, \mathbf{y}^{(1)}), (\mathbf{x}^{(1)}, \mathb
 Al principio no conocemos la respuesta $\mathbf{y}^{(i)}$ así que hacemos las predicciones
 $$\hat{\mathbf{y}}^{(i)} = \hat{f}(\mathbf{x}^{(i)}).$$
 
-Una vez que conocemos los valores
+Finalmente, una vez que conocemos los valores
 de la respuesta verdaderos, 
 medimos el desempeño de nuestro modelo comparando $\hat{\mathbf{y}}^{(i)}$ con
 ${\mathbf{y}}^{(i)}$. Si en general estos valores están cercanos, entonces consideramos
