@@ -1,0 +1,117 @@
+# La tarea predictiva fundamental
+
+En esta parte discutiremos en qué consiste el aprendizaje supervisado, 
+cómo medimos el desempeño de nuestras predicciones, y cómo entender
+este desempeño en el contexto del problema que queremos resolver.
+
+```{block2, type="resumen"}
+El objetivo principal en el aprendizaje supervisado es
+
+- Usar **datos etiquetados** para construir **modelos**
+- Usar estos modelos para hacer predicciones precisas de **nuevos casos** 
+
+```
+
+En función de esto, definimos la siguiente notación. Tenemos *datos de entrenamiento*
+de la forma
+$$(x^{(i)}, y^{(i)}) = \left ( (x_1^{(i)}, x_2^{(i)}, \ldots, x_p^{(i)}), y^{(i)} \right)$$
+a $x_1, x_2, \ldots, x_p$ les llamamos *variables de entrada*, y
+$y$ es la *respuesta*. El **conjunto de entrenamiento** es
+
+$${\mathcal L} =  (x^{(1)}, y^{(1)}), (x^{(2)}, y^{(2)}), \ldots, (x^{(N)}, y^{(N)}) $$
+Usando estos datos, buscamos construir una función
+
+$${\mathcal L} \to \hat{f} = f_{\mathcal L}$$. 
+
+Si observamos en el futuro un nuevo caso con
+variables de entrada $\mathbf{x} = (\mathbf{x}_1, \ldots, \mathbf{x}_p)$, nuestra predicción sería
+
+$$\hat{\mathbf{y}} = \hat{f} (\mathbf{x}),$$
+
+y una vez que conocemos el verdadero valor $\mathbf{y}$ de la variable respuesta, quisiéramos
+que nuestra predicción $\hat{\mathbf{y}}$ esté *cercana* al verdadero valor $\mathbf{y}$. La
+definición de *cercana* puede depender del problema particular. 
+
+Típicamente nos interesa hacer más de una predicción individual, y evaluar
+el desempeño en una población dada para la cual no conocemos la respuesta.
+Así que quisieramos evaluar varios casos nuevos, que de preferencia son una muestra
+grande
+del universo de datos para los que nos interesa hacer predicciones. Para
+esto necesitamos un **conjunto de datos de prueba** suficientemente grande, que denotamos por:
+
+$${\mathcal T} = (\mathbf{x}^{(1)}, \mathbf{y}^{(1)}), (\mathbf{x}^{(1)}, \mathbf{y}^{(1)}), \ldots, (\mathbf{x}^{(m)}, \mathbf{y}^{(m)}),$$
+
+
+Al principio no conocemos la respuesta $\mathbf{y}^{(i)}$ así que hacemos las predicciones
+$$\hat{\mathbf{y}}^{(i)} = \hat{f}(\mathbf{x}^{(i)}).$$
+
+Una vez que conocemos los valores
+de la respuesta verdaderos, 
+medimos el desempeño de nuestro modelo comparando $\hat{\mathbf{y}}^{(i)}$ con
+${\mathbf{y}}^{(i)}$. Si en general estos valores están cercanos, entonces consideramos
+que nuestras predicciones son buenas.
+
+```{block2, type="comentario"}
+- Con el conjunto de datos de entrenamiento construimos nuestra función de predicción $\hat{f}$.
+- Con el conjunto de datos de prueba evaluamos el desempeño predictivo de nuestro modelo.
+- El conjunto de datos de prueba **no** debe ser utilizado en la construcción de la función
+de predicción $\hat{f}$
+```
+
+
+
+## Medidas de error de predicción
+
+Hay varias maneras de medir el error de cada predicción particular. Es común, por ejemplo,
+usar el error cuadrático
+$$L({\mathbf{y}}^{(i)}, \hat{\mathbf{y}}^{(i)}) = \left ( {\mathbf{y}}^{(i)} - \hat{\mathbf{y}}^{(i)} \right )^2$$
+o también el error absoluto
+$$L({\mathbf{y}}^{(i)}, \hat{\mathbf{y}}^{(i)}) = \left | {\mathbf{y}}^{(i)} - \hat{\mathbf{y}}^{(i)} \right |$$
+Y usualmente definimos el **error de prueba** con el promedio de error sobre los datos
+de prueba. Por ejemplo, para el error absoluto calcularíamos:
+
+$$\hat{Err} = \frac{1}{m}\sum_i  \left | {\mathbf{y}}^{(i)} - \hat{\mathbf{y}}^{(i)} \right |$$
+
+
+## La tarea del análisis predictivo 
+
+En resumen, la tarea del análisis predictivo es la siguiente: dados 
+
+- Datos de entrenamiento $\mathcal{L}  = \{({x}^{(1)}, y^{1)}), ({x}^{(2)}, y^{2)}), \ldots, ({x}^{(n)}, y^{n)})\}$
+- Datos de prueba $\mathcal{T} =  \{(\mathbf{x}^{(1)}, \mathbf{y}^{(1)}), (\mathbf{x}^{(2)}, \mathbf{y}^{(2)}), \ldots, (\mathbf{x}^{(m)}, \mathbf{y}^{m)})\}$
+
+Queremos construir una función $\mathcal{L} \to f$ (sólo depende de datos de entrenamiento) tal que el promedio
+de error sobre los datos de prueba:
+
+$$\hat{Err} = \frac{1}{m} \sum_{i = 1}^m L \left(\mathbf{y}^{(j)}, {f}(\mathbf{x}^{(j)})\right )$$
+
+sea lo más chico posible. 
+
+Es crucial que los datos de entrenamiento sean distintos de los datos de prueba: esta es la
+esencia de *aprender a predecir*, y no memorizar, por ejemplo. Memorizar puede
+producir sobreinterpretación de patrones que no generalizan en los datos todavía no
+vistos.
+
+Otra manera de decir esto es que buscamos buen desempeño **fuera de la muestra** con la que construimos el modelo. 
+
+Esta formulación de la tarea del análisis predictivo ha sido muy productiva (@donoho50), y ha permitido
+avances grandes en muchos problemas interesantes desde hace unas cuantas décadas. En parte
+es porque 
+ esta formulación es relativamente fácil de implementar
+para agregar contribuciones de muchas personas. Sitios como [Kaggle](https://www.kaggle.com/) son implementaciones donde:
+
+- Hay un conjunto de datos disponibles, con los que cualquiera puede construir modelos
+- Existe un criterio fijo para medir error de las predicciones.
+- Existen competidores que se inscriben y producen reglas de predicción
+- Hay un referee que evalúa las reglas de los concursantes usando datos a los que sólo el referee
+tiene acceso.
+- (En algunos casos) Al final del concurso, los competidores muestran su metodología.
+
+**Ejemplo**: el concurso de Netflix (2009) siguió este patrón. De este concurso se desarrolló 
+parcialmente el área ahora floreciente de sistemas de recomendación.
+
+
+
+
+
+

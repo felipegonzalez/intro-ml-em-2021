@@ -1,0 +1,556 @@
+---
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+# Introducción
+
+## ¿Qué es aprendizaje de máquina (machine learning)?
+
+```{r, include = FALSE}
+library(ggplot2)
+theme_set(theme_minimal(base_size = 13))
+cbb_palette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+scale_colour_discrete <- function(...) {
+  scale_colour_manual(..., values = cbb_palette)
+}
+```
+
+Métodos **computacionales** para **aprender de datos** con el fin de
+producir reglas para mejorar el **desempeño** en alguna tarea o toma de
+decisión.
+
+#### Ejemplos de tareas de aprendizaje: {.unnumbered}
+
+-   Predecir si un cliente de tarjeta de crédito va a caer en impago en
+    los próximos tres meses.
+-   Reconocer palabras escritas a mano (OCR).
+-   Detectar llamados de ballenas en grabaciones de boyas.
+-   Estimar el ingreso mensual de un hogar a partir de las
+    características de la vivienda, posesiones y equipamiento y
+    localización geográfica.
+-   Dividir a los clientes de Netflix según sus gustos.
+-   Recomendar artículos a clientes de un programa de lealtad o servicio
+    online.
+
+Las razones usuales para intentar resolver estos problemas
+**computacionalmente** son diversas:
+
+-   Quisiéramos obtener una respuesta barata, rápida, **automatizada**,
+    y con suficiente precisión. Por ejemplo, reconocer caracteres en una
+    placa de coche de una fotografía se puede hacer por personas, pero
+    eso es lento y costoso. Igual oír cada segundo de grabación de las
+    boyas para saber si hay ballenas o no. Hacer mediciones directas del
+    ingreso de un hogar requiere mucho tiempo y esfuerzo.
+-   Quisiéramos **superar el desempeño actual** de los expertos o de
+    reglas simples utilizando datos: por ejemplo, en la decisión de dar
+    o no un préstamo a un solicitante, puede ser posible tomar mejores
+    decisiones con algoritmos que con evaluaciones personales o con
+    reglas simples que toman en cuenta el ingreso mensual, por ejemplo.
+-   Al resolver estos problemas computacionalmente tenemos oportunidad
+    de aprender más del problema que nos interesa: estas soluciones
+    forman parte de un ciclo de **análisis de datos** donde podemos
+    aprender de una forma más concentrada cuáles son características y
+    patrones importantes de nuestros datos.
+
+Es posible aproximarse a todos estos problemas usando reglas (por
+ejemplo, si los pixeles del centro de la imagen están vacíos, entonces
+es un cero, si el crédito total es mayor al 50% del ingreso anual,
+declinar el préstamo, etc). Las razones para no tomar un enfoque de
+reglas construidas "a mano":
+
+-   Cuando conjuntos de reglas creadas a mano se desempeñan mal (por
+    ejemplo, para otorgar créditos, reconocer caracteres, etc.)
+-   Reglas creadas a mano pueden ser difíciles de mantener (por ejemplo,
+    un corrector ortográfico), pues para problemas interesantes muchas
+    veces se requieren grandes cantidades de reglas. Por ejemplo: ¿qué
+    búsquedas www se enfocan en dar direcciones como resultados? ¿cómo
+    filtrar comentarios no aceptables en foros?
+
+## Ejemplo: reglas y aprendizaje
+
+*Lectura de un medidor mediante imágenes*. Supongamos que en una
+infraestructura tenemos medidores análogos (de electricidad, gas, etc.)
+que no se comunican. ¿Podríamos pensar en utilizar fotos tomadas
+automáticamente para medir el consumo?
+
+Por ejemplo, consideramos el siguiente problema (tomado de [este
+sitio](http://raphael.candelier.fr/?blog=Image%20Moments)):
+
+```{r, message = FALSE}
+library(tidyverse)
+library(patchwork)
+library(imager)
+# Datos: http://raphael.candelier.fr/?blog=Image%20Moments
+medidor_vid <- load.video("figuras/gauge_raw.mp4", fps = 5)
+```
+
+Nótese que las imágenes y videos son matrices o arreglos de valores de
+pixeles, por ejemplo estas son las dimensiones para el video y para un
+cuadro:
+
+```{r}
+dim(medidor_vid)
+medidor <- frame(medidor_vid, 20)
+dim(medidor)
+```
+
+En este caso, el video tienen 70 cuadros, y existen tres canales. Cada
+canal está representado por una matriz de 370x336 valores, y en cada uno
+está un valor que representa la intensidad del pixel.
+
+Buscámos hacer cálculos con estas matrices para extraer la información
+que queremos. En este caso, construiremos estos cálculos a mano.
+
+Primero filtramos (extraemos canal rojo, difuminamos y aplicamos un
+umbral):
+
+```{r}
+medidor_1 <- medidor %>% R() %>% isoblur(10)
+aguja <-  medidor_1 %>% threshold("99%")
+```
+
+```{r, echo=FALSE}
+layout(t(1:3))
+par(mar = c(1, 1, 1, 1))
+plot(medidor, axes = FALSE)
+plot(medidor_1, axes = FALSE)
+plot(aguja, axes = FALSE)
+```
+
+Logramos extraer la aguja, aunque hay algo de ruido adicional. Podemos
+extraer las líneas que pasan por más pixeles encendidos (transformada de
+Hough). Con estas líneas tenemos calculada la orientación de la aguja:
+
+```{r, message=FALSE}
+lineas_h <- hough_line(aguja, ntheta = 500, data.frame = T)
+lineas_top <- lineas_h %>% 
+    arrange(desc(score)) %>% 
+    top_n(5) %>% 
+    select(-score)  
+lineas_top
+```
+
+```{r, message=FALSE, echo=FALSE}
+layout(matrix(1:4, 2))
+par(mar = c(1, 1, 1, 1))
+plot(medidor, axes = FALSE)
+plot(medidor_1, axes = FALSE)
+plot(aguja, axes = FALSE)
+plot(aguja, axes = FALSE)
+pwalk(lineas_top, nfline, col="red")
+```
+
+Y ahora podemos aplicar el proceso de arriba a todas la imágenes:
+
+```{r}
+seleccionar_lineas <- function(lineas){
+    lineas %>% 
+      arrange(desc(score)) %>% 
+      filter(rho > 0) %>% 
+      top_n(5, score) %>% 
+      select(-score) %>% 
+      summarise(theta = 180 * mean(theta) / pi) %>% 
+      pull(theta)
+}
+
+# procesar por cuadro
+num_cuadros <- dim(medidor_vid)[3]
+
+angulos <- 1:num_cuadros %>% 
+    map( ~frame(medidor_vid, .x)) %>% 
+    map(R) %>% map( ~ isoblur(.x, 10)) %>% 
+    map( ~ threshold(.x, "98%")) %>% 
+    map( ~ hough_line(.x, 100, data.frame = TRUE)) %>% 
+    map_dbl(seleccionar_lineas)
+
+angulos_tbl <- tibble(t = 1:num_cuadros, angulo = angulos)
+```
+
+```{r, eval = FALSE}
+# puedes usar este código para crear un gif animado:
+library(gganimate)
+ggplot(angulos_tbl, aes(x = t, y = angulo)) +
+    geom_line() +
+    transition_reveal(t) 
+```
+
+![](https://media.giphy.com/media/S4HVNskqDGOADaeOY2/giphy.gif){width="150px"}
+![](https://media.giphy.com/media/hVm56lMsCDLHSsSOH0/giphy.gif){width="400px"}
+
+------------------------------------------------------------------------
+
+Por el contrario, en el **enfoque de aprendizaje**, comenzamos con un
+conjunto de datos etiquetado (por una persona, por un método costoso,
+etc.), y utilizamos alguna estructura general para aprender a producir
+la respuesta a partir de las imágenes. Por ejemplo, en este caso
+podríamos usaruna red nueronal simple (funciona también con regresión
+usual) usando directamente como entrada los valores de los pixeles de la
+imagen, *sin ningún preprocesamiento*:
+
+```{r}
+library(keras)
+# usamos los tres canales de la imagen
+x <- as.array(medidor_vid) %>% aperm(c(3,1,2,4))
+
+# reordenamos
+set.seed(12334)
+orden <- sample(1:num_cuadros, num_cuadros)
+x <- x[orden,,,,drop=FALSE]
+y <- angulos[orden]
+```
+
+```{r}
+# definir arquitectura
+modelo_aguja <- keras_model_sequential() %>%
+    layer_flatten() %>% 
+    layer_dropout(rate = 0.2) %>% 
+    layer_dense(units = 30) %>%
+    layer_dense(units = 1)
+```
+
+Ajustamos el modelo:
+
+```{r, message = FALSE}
+# definir objetivo y optimizador
+modelo_aguja %>% compile(
+  loss = loss_mean_absolute_error,
+  optimizer = optimizer_adam(lr = 0.0001),
+  metrics = c('mean_absolute_error')
+)
+# Entrenar con backprop en minibatches
+modelo_aguja %>% fit(
+  x = x, y = y,
+  batch_size = 20,
+  epochs = 150,
+  verbose = TRUE,
+  validation_split = 0.1
+)
+```
+
+Y observamos que obtenemos predicciones prometedoras:
+
+```{r, out.width = '500px', fig.width = 6, fig.height = 4,}
+preds <- predict(modelo_aguja, x)
+preds_tbl <- tibble(y = y, preds = preds)
+ggplot(preds_tbl, aes(x = preds, y = y)) +
+  geom_point(alpha = 0.5) +
+  geom_abline(colour = 'red')
+```
+
+De forma que podemos resolver este problema con algoritmos generales,
+como regresión o redes neuronales, *sin tener que aplicar métodos
+sofisticados de procesamiento de imágenes*. El enfoque de aprendizaje es
+particularmente efectivo cuando hay cantidades grandes de datos poco
+ruidosos, y aunque en este ejemplo los dos enfoques dan resultados
+razonables, en procesamiento de imágenes es cada vez más común usar
+redes neuronales grandes para resolver este tipo de problemas.
+
+```{block2, type="observacion"}
+En este ejemplo utilizamos el paquete **keras**, que hace una
+interfaz con la librería *keras* de python. La mayor parte de los cálculos
+se hacen con *tensorflow* (aunque hay otras opciones), 
+que puede configurarse para correr en GPU.
+```
+
+## Ejemplo: mediciones costosas o imprecisas
+
+En algunos casos, el estándar de la medición que nos interesa es uno que
+es costoso de cumplir: a veces se dice que *etiquetar* los datos es
+costoso. Un ejemplo es producir las estimaciones de ingreso trimestral
+de un hogar que se recolecta en la ENIGH (ver
+[aquí](https://www.inegi.org.mx/programas/enigh/nc/2018/)). En este caso
+particular, se utiliza esta encuesta como datos etiquetados para poder
+estimar el ingreso de otros hogares que no están en la muestra del
+ENIGH, pero para los que se conocen características de las vivienda,
+características de los integrantes, y otras medidas que son más
+fácilmente recolectadas en encuestas de opinión.
+
+Veremos otro ejemplo: estimar el valor de mercado de las casas en venta
+de una región. Es posible que tengamos un inventario de casas con varias
+de sus características registradas, pero producir estimaciones correctas
+de su valor de mercado puede requerir de inspecciones costosas de
+expertos, o tomar aproximaciones imprecisas de esta cantidad (por
+ejemplo, cuál es el precio ofertado).
+
+Utilizaremos datos de casas que se [vendieron en Ames, Iowa en cierto
+periodo](https://www.kaggle.com/prevek18/ames-housing-dataset). En este
+caso, conocemos el valor a la que se vendió una casa. Buscamos producir
+una estimación para otras casas para las cuales conocemos
+características como su localización, superficie en metros cuadrados,
+año de construcción, espacio de estacionamiento, y así sucesivamente.
+Estas medidas son más fáciles de recolectar, y quisiéramos producir una
+estimación de su precio de venta en términos de estas medidas.
+
+```{r, message = FALSE}
+source("R/casas_traducir_geo.R")
+casas %>% glimpse()
+```
+
+En este ejemplo intentaremos una forma simple de predecir.
+
+```{r, fig.width=8, fig.height=4}
+set.seed(68821)
+library(tidymodels)
+casas_split <- initial_split(casas, prop = 0.75)
+casas_entrena <- training(casas_split)
+g_1 <- ggplot(casas_entrena, aes(x = precio_miles)) +
+  geom_histogram()
+g_2 <- ggplot(casas_entrena, aes(x = area_hab_m2, 
+                          y = precio_miles, 
+                          colour = condicion_venta)) +
+  geom_point() 
+g_1 + g_2
+```
+
+La variable de condición de venta no podemos utilizarla. Podemos ver en
+lugar de eso solamente las de condición normal. También consideramos,
+por ejemplo, la calidad general de terminados:
+
+```{r}
+ggplot(casas_entrena %>% filter(condicion_venta == "Normal") %>% 
+         mutate(calidad_grupo = cut(calidad_gral, breaks = c(0, 5, 7, 8, 10))), 
+       aes(x = area_hab_m2, 
+           y = precio_miles,
+           colour = calidad_grupo)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, formula = "y ~ x")
+```
+
+Vemos que estas dos variables que hemos usado explican buena parte de la
+variación de los precios de las casas, y quizá podríamos proponer una
+fórmula simple de la forma:
+
+$$Precio = a_{calidad} + b_{calidad}Area$$
+
+donde los valores de $a_{calidad}, b_{calidad}$ podríamos estimarlos de
+los datos, e indica la forma de las rectas de la gráfica de arriba
+dependiendo de la calificación de la calidad de los terminados.
+
+Nuestro proceso comenzaría entonces construir los datos para usar en el
+modelo:
+
+```{r}
+receta_casas <- 
+  recipe(precio_miles ~ area_hab_m2 + calidad_gral + 
+           area_garage_m2 + condicion_venta, 
+         data = casas_entrena) %>% 
+  step_filter(condicion_venta == "Normal") %>% 
+  step_select(-condicion_venta, skip = TRUE) %>% 
+  step_cut(calidad_gral, breaks = c(3, 5, 7, 8)) %>% 
+  step_normalize(starts_with("area")) %>% 
+  step_dummy(calidad_gral) %>% 
+  step_interact(terms = ~ area_hab_m2:starts_with("calidad_gral")) 
+```
+
+Definimos el tipo de modelo que queremos ajustar
+
+```{r}
+casas_modelo <- linear_reg() %>% 
+  set_engine("lm")
+```
+
+```{r}
+workflow_casas <- workflow() %>% 
+  add_recipe(receta_casas) %>% 
+  add_model(casas_modelo)
+```
+
+Ajustamos el flujo
+
+```{r}
+ajuste <- fit(workflow_casas, casas_entrena)
+ajuste
+```
+
+Y ahora podemos hacer predicciones:
+
+```{r}
+set.seed(8)
+casas_prueba <- testing(casas_split) 
+ejemplos <- casas_prueba%>% sample_n(5)
+predict(ajuste, ejemplos) %>% 
+  bind_cols(ejemplos %>% select(precio_miles, area_hab_m2)) %>% 
+  arrange(desc(precio_miles))
+```
+
+Y finalmente podemos evaluar nuestro modelo. En este caso usamos el
+error promedio porcentual:
+
+```{r}
+metricas <- metric_set(mape, mae, rmse)
+metricas(casas_prueba %>% bind_cols(predict(ajuste, casas_prueba)), 
+     truth = precio_miles, estimate = .pred)
+```
+
+```{r, fig.width =5, fig.height=4}
+ggplot(casas_prueba %>% bind_cols(predict(ajuste, casas_prueba)),
+       aes(x = .pred, y = precio_miles)) +
+  geom_point() +
+  geom_abline(colour = "red") 
+```
+
+Este modelo tiene algunos defectos y todavía tiene error
+considerablemente grande. La mejora sin embargo podemos
+cuantificarla con un modelo base o *benchmark*. En este caso
+utilizamos el siguiente modelo simple:
+
+```{r}
+# nearest neighbors es grande, así que la predicción
+# es el promedio de precio en entrenamiento
+casas_promedio <- nearest_neighbor(
+    neighbors = 1000, weight_func = "rectangular") %>%
+  set_mode("regression") %>% 
+  set_engine("kknn")
+workflow_base <- workflow() %>% 
+  add_recipe(receta_casas) %>% 
+  add_model(casas_promedio)
+ajuste_base <- fit(workflow_base, casas_entrena)
+metricas(casas_prueba %>% bind_cols(predict(ajuste_base, casas_prueba)), 
+     truth = precio_miles, estimate = .pred)
+```
+
+
+```{block2, type="observacion"}
+En este ejemplo utilizamos los paquetes asociados a *tidymodels*, 
+que nos provee de un ambiente en R para construir modelos,
+validarlos, y hacer predicciones. Incorpora los métodos de predicción
+más importantes bajo una interfaz unificada.
+```
+
+## Aprendizaje supervisado y no supervisado
+
+Las tareas de aprendizaje se dividen en dos grandes partes: aprendizaje
+supervisado y aprendizaje no supervisado.
+
+En **Aprendizaje supervisado** buscamos construir un modelo o algoritmo
+para predecir o estimar un *target* o una *respuesta* a partir de
+ciertas variables de entrada.
+
+Predecir y estimar, en este contexto, se refieren a cosas similares.
+Generalmente se usa *predecir* cuando se trata de variables que no son
+observables ahora, sino en el futuro, y *estimar* cuando nos interesan
+variables actuales que no podemos observar ahora por costos o por la
+naturaleza del fenómeno.
+
+Por ejemplo, para identificar a los clientes con alto riesgo de impago
+de tarjeta de crédito, utilizamos datos históricos de clientes que han
+pagado y no han pagado. Con estos datos entrenamos un algoritmo para
+detectar anticipadamente los clientes con alto riesgo de impago.
+
+Usualmente dividimos los problemas de aprendizaje supervisado en dos
+tipos, dependiendo de la variables salida:
+
+-   Problemas de **regresión**: cuando la salida es una variable
+    numérica. El ejemplo de estimación de ingreso es un problema de
+    regresión
+-   Problemas de **clasificación**: cuando la salida es una variable
+    categórica. El ejemplo de detección de dígitos escritos a manos es
+    un problema de clasificación.
+
+En contraste, en **Aprendizaje no supervisado** no hay *target* o
+variable respuesta. Buscamos modelar y entender las relaciones entre
+variables y entre observaciones, o patrones importantes o interesantes
+en los datos.
+
+Los problemas supervisados tienen un objetivo claro: hacer las mejores
+predicciones posibles bajo ciertas restricciones. Los problemas no
+supervisados tienden a tener objetivos más vagos, y por lo mismo pueden
+ser más difíciles.
+
+## Ejemplo: construyendo descriptores de películas
+
+Un tipo de análisis que se considera análisis no supervisado es la
+reducción de dimensionalidad. En este tipo de análisis buscamos unas
+cuantas variables derivadas que permitan reconstruir los datos
+originales, es decir: buscamos obtener unas pocas mediciones que
+condensen la información contenida en un número grande de mediciones.
+Esto es posible cuando esas mediciones tiene patrones de asociación.
+
+Consideremos las calificaciones de usuarios a películas de Netflix.
+
+```{r leertabla1, message = FALSE}
+pelis_nombres <- read_csv('./datos/netflix/movies_title_fix.csv', 
+                          col_names = FALSE, na = c("", "NA", "NULL"))
+names(pelis_nombres) <- c('peli_id','año','nombre')
+```
+
+
+```{r leertabla2}
+dat_netflix <- 
+  read_csv( "./datos/netflix/dat_muestra_nflix.csv", progress = FALSE) %>%
+  group_by(usuario_id) %>% 
+  mutate(usuario_id = cur_group_id())
+head(dat_netflix)
+dat_netflix %>% ungroup() %>% tally()
+```
+
+Nos interesan principalmente las calificaciones centradas por usuario,
+para evitar efectos de heterogeneidad en el uso de la escala:
+
+```{r}
+dat_netflix <- dat_netflix %>% 
+  group_by(usuario_id) %>% 
+  mutate(calif_centrada = calif - mean(calif, na.rm = TRUE)) %>% 
+  ungroup()
+num_evals <- dat_netflix %>% 
+  group_by(peli_id) %>% 
+  summarise(n = n())
+```
+
+Y ahora buscamos reducir estos datos a cinco dimensiones: ¿existen 5
+valores o dimensiones que describan películas, de forma que sabiendo la
+afinidad de cada usario por esas dimensiones podamos recuperar la
+calificación que dio a cada película?
+
+```{r}
+library(Matrix)
+X <- sparseMatrix(i = dat_netflix$usuario_id,
+                  j = dat_netflix$peli_id,
+                  x = dat_netflix$calif_centrada)
+dim(X)
+```
+
+Hacemos nuestra aproximación de rango 5:
+
+```{r}
+descomp_netflix <- irlba::irlba(X, nu = 5, nv = 5)
+```
+
+Y ahora examinamos las cinco dimensiones que acabamos de encontrar:
+
+```{r}
+peliculas_desc <- descomp_netflix$v %>% 
+  as_tibble() %>% 
+  mutate(peli_id = row_number()) %>% 
+  left_join(pelis_nombres, by = "peli_id") %>% 
+  left_join(num_evals, by = "peli_id")
+```
+
+```{r}
+library(ggrepel)
+set.seed(134)
+# para poder graficar más fácilmente, filtramos número de películas
+# por número de reseñas e importancia de dimensiones
+peliculas_graf <- peliculas_desc %>% filter(n > 3000) %>%
+  filter(V2^2 + V3^2 > 0.001) %>% 
+  sample_n(200)
+ggplot(peliculas_graf, aes(x = V2, y = V3, label = nombre)) +
+  geom_point(colour = "red") + 
+  geom_text_repel(colour = "gray40", size = 3, 
+                  max.overlaps = 20, max.time = 2) 
+```
+
+En esta gráfica de ejemplo, tenemos dos descriptores numéricos de cada
+película asociados con distintas inclinaciones de cada persona: por
+ejemplo, algunas personas tienen preferencias en el cuadrante superior
+derecho: si están ahí, es probable que prefieran pelínculas como 
+*The Royal Tenenbaums* o *Pulp Fiction* en lugar de *Dirty Dancing* o 
+*Miss Congeniality*.
+
+¿De dónde salen estas dimensiones? De intentar reproducir las
+calificaciones observadas con un número bajo de dimensiones. Cuando
+optimizamos para encontrar esta representación compacta, estas
+dimensiones latentes necesariamente capturan patrones generales en los
+datos (cuando éstos existen).
