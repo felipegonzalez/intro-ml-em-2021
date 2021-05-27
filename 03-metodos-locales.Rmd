@@ -61,6 +61,7 @@ un número más razonable de vecinos más cercanos, y un kernel que produzca
 un suavizado más apropiado.
 
 ```{r}
+library(tidymodels)
 set.seed(1424)
 simular_ejemplo <- function(n, sd = 500){
   x <- runif(n, 0, 20)
@@ -71,7 +72,10 @@ simular_ejemplo <- function(n, sd = 500){
 datos_entrena <- simular_ejemplo(30)
 datos_prueba <- simular_ejemplo(1000)
 datos_x_prueba <- datos_prueba %>% select(-y)
-modelo_vecino <- nearest_neighbor(neighbors = 7, weight_func = "epanechnikov") %>% 
+mis_metricas <- metric_set(mae)
+receta_simple <- recipe(y ~ ., data = datos_entrena) %>%
+  update_role(id, new_role = "id")
+modelo_vecino <- nearest_neighbor(neighbors = 10, weight_func = "gaussian") %>% 
   set_mode("regression") %>% 
   set_engine("kknn")
 flujo_simple <- workflow() %>% 
@@ -108,7 +112,6 @@ cercanos. La forma de las predicciones parece mucho mejor adaptada a los datos.
 Resolveremos el ejemplo de predicción de precios de ventas de casas.
 
 ```{r, fig.width=8, fig.height=4, message=FALSE}
-library(tidymodels)
 set.seed(68821)
 source("R/casas_traducir_geo.R")
 casas_split <- initial_split(casas, prop = 0.75)
@@ -198,6 +201,7 @@ ggplot(casas_prueba %>% bind_cols(predict(ajuste, casas_prueba)),
 
 
 ```{block2, type="resumen"}
+
 - Los métodos locales son usualmente fácil de explicar e implementar (aunque hacer
   búsquedas de vecinos cercanos en una base grande puede no ser muy rápido).
 - Los métodos locales parecen tener muy pocos supuestos, y parece que pueden adaptarse
@@ -208,4 +212,76 @@ pueden tener fallas graves.
 ```
 
 ## Ejemplo: métodos locales en dimensión alta
+
+Consideramos el siguiente ejemplo de [@ESL] de un problema de predicción 
+determinístico:
+
+Consideremos que la salida Y es determinística $Y = e^{-8\sum_{j=1}^p x_j^2}$.
+Vamos a usar 1-vecino más cercano para hacer predicciones, con 
+una muestra de entrenamiento de 1000 casos.
+Generamos $x^{i}$‘s uniformes en $[1,1]$, para $p = 2$, y calculamos la respuesta 
+$Y$ para cada caso:
+
+```{r}
+fun_exp <- function(x) exp(-8 * sum(x ^ 2))
+x <- map(1:1000, ~ runif(2, -1, 1))
+dat <- tibble(x = x) %>% 
+        mutate(y = map_dbl(x, fun_exp))
+ggplot(dat %>% mutate(x_1 = map_dbl(x, 1), x_2 = map_dbl(x, 2)), 
+       aes(x = x_1, y = x_2, colour = y)) + geom_point()
+```
+
+La mejor predicción en $x_0 = (0,0)$ es $f((0,0)) = 1$. El vecino más
+cercano al origen es
+```{r vmcbajadim}
+dat <- dat %>% mutate(dist_origen = map_dbl(x, ~ sqrt(sum(.x^2)))) %>% 
+  arrange(dist_origen)
+mas_cercano <- dat[1, ]
+mas_cercano; mas_cercano$x[[1]]
+```
+Nuestra predicción es entonces $\hat{f}(0)=$ `r mas_cercano$y`, que
+es bastante cercano al valor verdadero (1).
+
+Ahora intentamos hacer lo mismo para dimensión $p=8$.
+
+```{r vmcalta}
+x <- map(1:1000, ~ runif(8, -1, 1))
+dat <- tibble(x = x) %>% 
+       mutate(y = map_dbl(x, fun_exp))
+dat <- dat %>% mutate(dist_origen = map_dbl(x, ~ sqrt(sum(.x^2)))) %>% 
+  arrange(dist_origen)
+mas_cercano <- dat[1, ]
+# el vecino más cercano al origen es:
+mas_cercano$x[[1]]
+```
+
+Y el resultado es catastrófico. Nuestra predicción puntual es
+```{r}
+mas_cercano$y
+```
+
+Necesitaríamos una muestra de alrededor de  un millón de casos
+para obtener resultados no tan malos (pruébalo). Si la dimensión es más
+alta que 8, lo cual no es ninguna situación excepcional en problemas
+aplicados, entonces para obtener buen desempeño se requieren tamaños
+de datos que no ocurren en la práctica.
+
+¿Qué es lo que está pasando? La razón es que en dimensiones altas, 
+los puntos de la muestra de entrenamiento están muy lejos 
+unos de otros, y están cerca de la frontera, 
+incluso para tamaños de muestra relativamente grandes como n = 1000.
+Cuando la dimensión crece, la situación empeora exponencialmente.
+
+```{block2, type="resumen"}
+**La maldición de la dimensionalidad**
+
+En dimensiones altas, todos los conjuntos de entrenamiento factibles
+se distribuyen de manera rala en el espacio de entradas: los puntos de entrenamiento
+típicamente están lejanos a prácticamente cualquier punto en el que queramos
+hacer predicciones. El desempeño de los **métodos locales no estructurados**
+es mediocre o malo usualmente.
+```
+
+
+
 
