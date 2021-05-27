@@ -1,0 +1,138 @@
+# Métodos lineales: regresión lineal
+
+
+```{r, include = FALSE}
+library(tidyverse)
+theme_set(theme_minimal(base_size = 13))
+cbb_palette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+scale_colour_discrete <- function(...) {
+  scale_colour_manual(..., values = cbb_palette)
+}
+```
+
+¿Cuál es la manera de superar la maldición de la dimensionalidad que mostramos
+en la sección anterior? ¿Por qué
+es posible resolver problemas en dimensión alta (imágenes, texto, múltiples características
+sociodemográficas, etc)? La principal razón
+
+- Muchos datos tienen estructuras o regularidades fuertes, lo que localiza su posición en
+el espacio de dimensión alta (por ejemplo imágenes).
+- Métodos más estructurados que incorporan esas regularidades pueden explotar
+información que no necesariamente está "cerca" de donde queremos hacer predicciones.
+
+El primer ejemplo de métodos estructurados es la regresión lineal. Si la respuesta
+que nos interesa modelar tiene una relación aproximadamente lineal con las entradas,
+entonces requerimos relativamente muy pocos datos para construir predicciones
+buenas (en el caso extremo, piensa que solo necesitas dos datos para construir una recta:
+si el problema es de ruido bajo y la relación es lineal, las predicciones de este modelo
+serán muy buenas).
+
+En **regresión lineal**, buscamos funciones de predicción de la forma:
+
+$$f(x) = a_0 + a_1 x_1 + a_2 x_2 + \cdots + a_p x_p$$
+donde $x_1,\ldots, x_p$ son las entradas. Es quizá la manera más simple
+de combinar información de estas entradas: la predicción es una suma ponderada
+de las entradas.
+
+Nótese que antes de hacer predicciones, es necesario entrenar este modelo, 
+que en este caso significa calcular los pesos $a_i$ apropiados. Una manera simple
+es encontrar las $a_i$ que minimizan algún error *sobre la muestra de entrenamiento*.
+Por ejemplo, si usamos el error cuadrático, y nuestro conjunto de entrenamiento
+es $(x^{(1)}, y^{(1)}), (x^{(2)}, y^{(2)}), \ldots, (x^{(N)}, y^{(N)})$, podemos
+intentar resolver
+
+$$\min_{a_0, a_1, \ldots, a_p}\sum_{i=1}^N (y^{(i)} - f(x^{(i)}))^2$$
+
+que también se puede escribir como
+
+$$\min_{a_0, a_1, \ldots, a_p}\sum_{i=1}^N (y^{(i)} - a_0 - a_1 x^{(i)}_1 - \cdots   -a_p x^{(i)}_p)^2.$$
+Este se llama un problema de *mínimos cuadrados*, y es posible resolverlo analíticamente
+(derivando e igualando a cero), o con algún método numérico.
+
+```{block2, type="resumen"}
+- Nótese que el problema de arriba no intenta "minimizar el error de predicción". Simplemente
+intenta ajustar los valores de $f(x)$ a las $y$ sobre la mustra de entrenamiento. 
+- En realidad queremos minimizar el error de predicción, pero este está en términos
+de la muestra de prueba, que no podemos usarla para entrenar el modelo lineal.
+- En consecuencia, este problema de minimización generalmente no
+es que queremos resolver, y muchas veces lo modificamos para
+obtener mejor desempeño predictivo: esto lo veremos más adelante.
+```
+
+
+## Ejemplo: explotando estructura
+
+Este segundo ejemplo también es de [@ESL]. Supongamos que estamos otra vez en un problema de dimensión alta, y ahora intentamos algo similar con una función que es razonable aproximar
+con una función lineal. Esta función *solo depende de la primera entrada, y las demás
+componentes de $x$ son ruido en términos del problema de predicción:
+
+```{r}
+fun_cuad <- function(x)  0.5 * (1 + x[1])^2
+```
+
+Y queremos predecir para $x=(0,0,\ldots,0)$, cuyo valor exacto es
+
+```{r}
+fun_cuad(0)
+```
+
+Los datos se generan de la siguiente forma:
+
+```{r}
+simular_datos <- function(p = 40){
+    x_tbl <- map(1:1000,  ~ tibble(x = runif(p, -1, 1), nombre = paste0("x_", 1:p)))
+    dat <- tibble(x_tbl = x_tbl) %>% 
+      mutate(y = map_dbl(x_tbl, ~ fun_cuad(.x$x)))
+    dat %>% unnest(cols = c(x_tbl)) %>% 
+      pivot_wider(names_from = nombre, values_from = x)
+}
+```
+
+Por ejemplo, para dimensión $p=1$ (nótese que una aproximación
+lineal no es tan mala):
+
+```{r, fig.width= 4, fig.height = 3}
+ejemplo <- simular_datos(p = 1) 
+ggplot(ejemplo, aes(x = x_1, y = y)) + geom_point() +
+    geom_smooth(method = "lm")
+```
+
+
+Ahora simulamos el proceso en dimensión $p=40$: simulamos las entradas, y aplicamos un vecino más cercano
+
+```{r} 
+library(tidymodels)
+set.seed(831)
+dat <- simular_datos(p = 40)
+origen <- dat %>% select(-y) %>% slice(1) %>% 
+  mutate(across(where(is.numeric), ~ 0))
+modelo_vmc <- nearest_neighbor(n = 1) %>% 
+  set_mode("regression") %>% set_engine("kknn")
+ajuste_vmc <- modelo_vmc %>% fit(y ~ ., dat) 
+predict(ajuste_vmc, origen)
+```
+
+Este no es un resultado muy bueno (muy lejos de 0.5). Sin embargo, regresión se
+desempeña considerablemente mejor:
+
+```{r}
+modelo_lineal <- linear_reg() 
+ajuste_lineal <- modelo_lineal %>% fit(y ~ ., dat) 
+predict(ajuste_lineal, origen)
+```
+
+Donde podemos ver que típicamente la predicción de regresión
+es mucho mejor que la de 1 vecino más cercano (prueba con otras semillas). 
+
+## Ejemplo: precios de casas
+
+Algunas veces, encontrar la estructura apropiada puede requerir más trabajo
+que simplemente escoger una familia de modelos. En el ejemplo de precios
+de casas
+
+
+
+
+
+
+
