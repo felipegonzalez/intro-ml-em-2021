@@ -384,11 +384,14 @@ metricas(casas_prueba %>% bind_cols(predict(ajuste, casas_prueba)),
      truth = precio_miles, estimate = .pred)
 ```
 
-```{r, fig.width =5, fig.height=4}
-ggplot(casas_prueba %>% bind_cols(predict(ajuste, casas_prueba)),
+```{r, fig.width =7, fig.height=3}
+casas_prueba_f <- filter(casas_prueba,
+  condicion_venta %in% c("Normal", "Partial", "Abnorml"))
+ggplot(casas_prueba_f %>%
+       bind_cols(predict(ajuste, casas_prueba_f)),
        aes(x = .pred, y = precio_miles)) +
   geom_point() +
-  geom_abline(colour = "red") 
+  geom_abline(colour = "red") + facet_wrap(~ condicion_venta)
 ```
 
 Este modelo tiene algunos defectos y todavía tiene error
