@@ -1,5 +1,14 @@
 # La tarea predictiva fundamental
 
+```{r, include = FALSE}
+library(tidyverse)
+theme_set(theme_minimal(base_size = 13))
+cbb_palette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+scale_colour_discrete <- function(...) {
+  scale_colour_manual(..., values = cbb_palette)
+}
+```
+
 En esta parte discutiremos en qué consiste el aprendizaje supervisado, 
 cómo medimos el desempeño de nuestras predicciones, y cómo entender
 este desempeño en el contexto del problema que queremos resolver.
@@ -52,13 +61,130 @@ medimos el desempeño de nuestro modelo comparando $\hat{\mathbf{y}}^{(i)}$ con
 ${\mathbf{y}}^{(i)}$. Si en general estos valores están cercanos, entonces consideramos
 que nuestras predicciones son buenas.
 
-```{block2, type="comentario"}
+```{block2, type="resumen"}
 - Con el conjunto de datos de entrenamiento construimos nuestra función de predicción $\hat{f}$.
 - Con el conjunto de datos de prueba evaluamos el desempeño predictivo de nuestro modelo.
 - El conjunto de datos de prueba **no** debe ser utilizado en la construcción de la función
 de predicción $\hat{f}$
+- No tiene sentido usar los datos de prueba para construir la función de predictor: los
+casos de prueba son análogos a las *preguntas de un examen*. Los datos de entrenamiento
+son los casos que "mostramos" al modelo para aprender a contestar esas preguntas
 ```
 
+## Ejemplo: un ajuste lineal
+
+Consideremos un ejemplo simple con datos simulados. Sólo hay una variable
+de entrada (lo cual es muy poco común), y supongamos que los datos que hemos
+observado hasta ahora son los siguientes:
+
+```{r, fig.width=5, fig.asp=0.7}
+set.seed(1424)
+simular_ejemplo <- function(n, sd = 500){
+  x <- runif(n, 0, 20)
+  y <- ifelse(x < 10, 1000*sqrt(x), 1000*sqrt(10))
+  y <- y + rnorm(n, 0, sd = sd)
+  tibble(id = 1:n, x = x, y = y)
+}
+datos_entrena <- simular_ejemplo(30)
+datos_prueba <- simular_ejemplo(1000)
+datos_x_prueba <- datos_prueba %>% select(-y)
+ggplot(datos_entrena, aes(x = x, y = y)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE)
+```
+
+Nótese que agregamos una recta de mínimos cuadrados con la que pretendemos 
+hacer predicciones. Podemos construirla de la siguiente forma:
+
+```{r, message=FALSE, warning=FALSE}
+library(tidymodels)
+# metricas de evaluacion
+# definir metricas
+mis_metricas <- metric_set(mae)
+# receta de preprocesamiento y definición de papeles de variables
+receta_simple <- recipe(y ~ ., data = datos_entrena) %>%
+  update_role(id, new_role = "id")
+# modelo
+modelo <- linear_reg() %>% set_engine("lm")
+#modelo <- linear_reg() %>% set_engine("keras")
+# flujo para el pipeline de procesamiento y ajuste
+flujo_simple <- workflow() %>% 
+  add_recipe(receta_simple) %>% 
+  add_model(modelo)
+```
+
+Ahora ajustamos:
+
+```{r}
+ajuste <- fit(flujo_simple, datos_entrena)
+pull_workflow_fit(ajuste)
+```
+
+Una vez que hemos terminado, podemos hacer predicciones para
+nuestros datos de prueba:
+
+```{r}
+preds <- predict(ajuste, datos_x_prueba)
+preds
+```
+Finalmente, revelamos los valores de respuesta $y$ observados,
+y evaluamos:
+
+```{r}
+datos_eval <- preds %>% 
+  bind_cols(datos_prueba)
+eval_lineal <- mis_metricas(datos_eval, truth = y, estimate = .pred) %>% 
+  mutate(modelo = "lineal") %>% select(modelo, everything())
+eval_lineal
+```
+
+## Ejemplo: vecinos cercanos
+
+Veamos otra manera de hacer predicciones. En este ejemplo usamos la técnica
+de 1-vecino más cercano, que consiste en predecir para una $\mathbf{x}$ buscando
+entre los casos de entrenamiento aquel cuya $x^{(i)}$ esté más cercana a
+$\mathbf{x}$, y tomando el valor correspondiente de $y$:
+
+```{r}
+modelo_vecino <- nearest_neighbor(neighbors = 1) %>% 
+  set_mode("regression") %>% 
+  set_engine("kknn")
+flujo_simple <- workflow() %>% 
+  add_recipe(receta_simple) %>% 
+  add_model(modelo_vecino)
+ajuste <- fit(flujo_simple, datos_entrena)
+```
+
+```{r}
+preds <- predict(ajuste, datos_x_prueba)
+datos_eval <- preds %>% 
+  bind_cols(datos_prueba)
+eval_lineal <- mis_metricas(datos_eval, truth = y, estimate = .pred) %>% 
+  mutate(modelo = "1-vecino") %>% select(modelo, everything())
+eval_lineal
+```
+
+En este par de ejemplo, es método lineal parece funcionar mejor, pues
+el error de prueba con una muestra grande es más bajo con el modelo lineal
+con el de 1 vecino más cercano. 
+
+```{r}
+graf_x <- tibble(x = seq(0, 20, 0.1), id = NA)
+preds_x <- predict(ajuste, graf_x)
+datos_graf <- preds_x %>% bind_cols(graf_x)
+ggplot(datos_entrena, aes(x = x)) +
+  geom_line(data= datos_graf, aes(y = .pred), colour = "red") +
+  geom_point(aes(y = y)) +
+  geom_smooth(aes(y = y), method = "lm", se = FALSE)
+```
+
+
+```{block2, type="resumen"}
+Ninguna de estas dos soluciones parece apropiada para el problema. ¿Por qué?
+  ¿Por qué predecir con una recta simple parece no apropiado? ¿Qué defectos
+ves en las predicciones que produce el model de 1-vecino?
+  Discutiremos esto en detalle más adelante.
+```
 
 
 ## Medidas de error de predicción
@@ -86,14 +212,12 @@ de error sobre los datos de prueba:
 
 $$\hat{Err} = \frac{1}{m} \sum_{i = 1}^m L \left(\mathbf{y}^{(j)}, {f}(\mathbf{x}^{(j)})\right )$$
 
-sea lo más chico posible. 
+sea lo más chico posible. A esta cantidad le llamamos **error de prueba**.
 
 Es crucial que los datos de entrenamiento sean distintos de los datos de prueba: esta es la
-esencia de *aprender a predecir*, y no memorizar, por ejemplo. Memorizar puede
-producir sobreinterpretación de patrones que no generalizan en los datos todavía no
-vistos.
-
-Otra manera de decir esto es que buscamos buen desempeño **fuera de la muestra** con la que construimos el modelo. 
+esencia de *aprender*, y no memorizar. Memorizar puede
+producir sobreinterpretación de patrones que no generalizan en datos todavía no
+vistos. Otra manera de decir esto es que buscamos buen desempeño **fuera de la muestra** con la que construimos el modelo. 
 
 Esta formulación de la tarea del análisis predictivo ha sido muy productiva (@donoho50), y ha permitido
 avances grandes en muchos problemas interesantes desde hace unas cuantas décadas. En parte
@@ -102,14 +226,17 @@ es porque
 para agregar contribuciones de muchas personas. Sitios como [Kaggle](https://www.kaggle.com/) son implementaciones donde:
 
 - Hay un conjunto de datos disponibles, con los que cualquiera puede construir modelos
-- Existe un criterio fijo para medir error de las predicciones.
-- Existen competidores que se inscriben y producen reglas de predicción
-- Hay un referee que evalúa las reglas de los concursantes usando datos a los que sólo el referee
-tiene acceso.
+- Existe un criterio fijo para medir error en las predicciones.
+- Existen competidores que se inscriben y producen reglas de predicción suando los datos
+disponibles.
+- Hay un referee que evalúa las reglas de los concursantes *usando datos a los que sólo el referee
+tiene acceso*.
 - (En algunos casos) Al final del concurso, los competidores muestran su metodología.
 
 **Ejemplo**: el concurso de Netflix (2009) siguió este patrón. De este concurso se desarrolló 
 parcialmente el área ahora floreciente de sistemas de recomendación.
+
+
 
 
 
