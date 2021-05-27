@@ -1,0 +1,211 @@
+# Métodos locales: vecinos más cercanos
+
+```{r, include = FALSE}
+library(tidyverse)
+theme_set(theme_minimal(base_size = 13))
+cbb_palette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+scale_colour_discrete <- function(...) {
+  scale_colour_manual(..., values = cbb_palette)
+}
+```
+
+Una de las estrategias más simples para hacer predicciones es buscar en
+nuestro conjunto de entrenamiento casos similares a los que queremos hacer
+predicciones, y construir predicciones usando esos casos *similares*.
+
+Por ejemplo, en el método de $k$ vecinos más cercanos, sea 
+$\mathbf{x} = (\mathbf{x}_1, \mathbf{x}_2, \ldots, \mathbf{x}_n)$ el caso
+para el que queremos hacer predicciones. Calculamos para nuestros casos
+de entrenamiento $(x^{(i)}, y^{(i)})$ la distancia
+$$d_i = dist(\mathbf{x}, x^{(i)})$$
+y encontramos los $k$ casos de entrenamiento don $d_i$ más chica. Supongamos
+que $N(\mathbf{x})$ representa el conjunto de estos $k$ vecinos más cercanos.
+Nuestra predicción es entonces el promedio de las respuestas de estos $k$ vecinos:
+
+$$\hat{f}(\mathbf{x}) = \frac{1}{k}\sum_{i\in N(\mathbf{x})} y^{(i)}.$$
+
+La distancia puede ser seleccionada de distintas maneras: por ejemplo, es común
+normalizar los datos para que tengan la misma escala, y utilizar la distancia euclideana.
+
+También es posible utilizar una ponderación de casos, donde damos más peso a los valores cercanos y menos peso a los valores menos cercanos:
+
+$$\hat{f}(\mathbf{x}) = \frac{\sum_{i\in N(\mathbf{x})} \phi_iy^{(i)}}{\sum_{i\in N(\mathbf{x})} \phi_i}$$
+
+donde por ejemplo $ \phi_i = \phi(||x^{(i)} - \mathbf{x}||).$ A la función $\phi$
+le llamamos *kernel* para la distancia, y puede tener distintas formas, por ejemplo 
+
+- Si $\phi$ es constante, se trata del kernel *rectangular*.
+- Si usamos $\phi_i = \phi(d) = e^{-d^2/2}$, se trata del kernel *gaussiano*.
+
+Revisa [esta liga](https://epub.ub.uni-muenchen.de/1769/1/paper_399.pdf) para
+entender la implementación del paquete [@kknn] en R.
+
+El *suavizamiento loess* que quizá has utilizado para producir suavizadores en gráficas
+de *ggplot* es una variación de estos método de vecinos cercanos ponderados. Una diferencia
+es que en este suavizamiento, en lugar de dar un número de vecinos cercanos a considerar,
+usamos una *ventana* de distancia alrededor de cada punto:
+
+```{r, fig.width=4, fig.height=3}
+ggplot(mtcars, aes(x = disp, y = mpg)) +
+  geom_point() +
+  geom_smooth(method = "loess", span = 0.35, se = FALSE,
+              method.args = list(degree = 0, family = "gaussian"))
+# cuando usamos degree = 1 o degree = 2, el proceso de ponderación
+# también incorpora una regresión local
+```
+
+## Ejemplo: ajustando el número de vecinos
+
+Repetiremos nuestro ejercicio de simulación simple usando
+un número más razonable de vecinos más cercanos, y un kernel que produzca
+un suavizado más apropiado.
+
+```{r}
+set.seed(1424)
+simular_ejemplo <- function(n, sd = 500){
+  x <- runif(n, 0, 20)
+  y <- ifelse(x < 10, 1000*sqrt(x), 1000*sqrt(10))
+  y <- y + rnorm(n, 0, sd = sd)
+  tibble(id = 1:n, x = x, y = y)
+}
+datos_entrena <- simular_ejemplo(30)
+datos_prueba <- simular_ejemplo(1000)
+datos_x_prueba <- datos_prueba %>% select(-y)
+modelo_vecino <- nearest_neighbor(neighbors = 7, weight_func = "epanechnikov") %>% 
+  set_mode("regression") %>% 
+  set_engine("kknn")
+flujo_simple <- workflow() %>% 
+  add_recipe(receta_simple) %>% 
+  add_model(modelo_vecino)
+ajuste <- fit(flujo_simple, datos_entrena)
+```
+
+```{r}
+preds <- predict(ajuste, datos_x_prueba)
+datos_eval <- preds %>% 
+  bind_cols(datos_prueba)
+eval_lineal <- mis_metricas(datos_eval, truth = y, estimate = .pred) %>% 
+  mutate(modelo = "1-vecino") %>% select(modelo, everything())
+eval_lineal
+```
+
+```{r, message = FALSE}
+graf_x <- tibble(x = seq(0, 20, 0.1), id = NA)
+preds_x <- predict(ajuste, graf_x)
+datos_graf <- preds_x %>% bind_cols(graf_x)
+ggplot(datos_entrena, aes(x = x)) +
+  geom_line(data= datos_graf, aes(y = .pred), colour = "red") +
+  geom_point(aes(y = y)) +
+  geom_smooth(aes(y = y), method = "lm", se = FALSE)
+```
+
+
+Y vemos que el desempeño es mejor que el modelo lineal y el de 1-vecinos más
+cercanos. La forma de las predicciones parece mucho mejor adaptada a los datos.
+
+## Ejemplo: precios de casas
+
+Resolveremos el ejemplo de predicción de precios de ventas de casas.
+
+```{r, fig.width=8, fig.height=4, message=FALSE}
+library(tidymodels)
+set.seed(68821)
+source("R/casas_traducir_geo.R")
+casas_split <- initial_split(casas, prop = 0.75)
+casas_entrena <- training(casas_split)
+```
+
+
+```{r}
+receta_casas <- 
+  recipe(precio_miles ~ area_hab_m2 + 
+           area_garage_m2 + 
+           area_sotano_m2 +
+           area_lote_m2 +
+           calidad_gral + 
+           aire_acondicionado +
+           año_construccion +
+           condicion_venta, 
+         data = casas_entrena) %>% 
+  step_filter(condicion_venta == "Normal") %>% 
+  step_select(-condicion_venta, skip = TRUE) %>% 
+  step_normalize(all_numeric_predictors()) %>% 
+  step_dummy(aire_acondicionado)
+```
+
+```{block2, type="observacion"}
+- Obsérvese el paso de normalización en la receta. Esto es importante
+pues consideramos variables en distintas escalas (por ejemplo, año de construcción,
+tamaños de garage y de áreas habitables, etc.)
+- Esta receta es necesaria aprenderla o entrenarla también (¿con qué media
+se centran las variables por ejemplo?)
+- Al incorporarla más adelante en un flujo que incluye el ajuste del modelo
+podemos hacer el ajuste completo de preprocesamiento y modelo
+```
+
+Un error común, por ejemplo, es centrar con todos los datos disponibles
+antes de centrar, o usar los datos de prueba para incorporar en la normalización.
+Explica por qué esto viola los principios de la tarea predictiva fundamental.
+
+
+Definimos el tipo de modelo que queremos ajustar
+
+```{r}
+casas_modelo <- nearest_neighbor(neighbors = 10, weight_func = "gaussian") %>% 
+  set_engine("kknn")
+```
+
+```{r}
+workflow_casas <- workflow() %>% 
+  add_recipe(receta_casas) %>% 
+  add_model(casas_modelo)
+```
+
+Ajustamos el flujo
+
+```{r}
+ajuste <- fit(workflow_casas, casas_entrena)
+ajuste
+```
+
+Y ahora podemos hacer predicciones:
+
+```{r}
+set.seed(8)
+casas_prueba <- testing(casas_split) 
+ejemplos <- casas_prueba %>% sample_n(5)
+predict(ajuste, ejemplos) %>% 
+  bind_cols(ejemplos %>% select(precio_miles, area_hab_m2)) %>% 
+  arrange(desc(precio_miles))
+```
+
+Y finalmente podemos evaluar nuestro modelo. En este caso usamos el
+error promedio porcentual:
+
+```{r}
+metricas <- metric_set(mape, mae, rmse)
+metricas(casas_prueba %>% bind_cols(predict(ajuste, casas_prueba)), 
+     truth = precio_miles, estimate = .pred)
+```
+
+```{r, fig.width = 8, fig.height=5}
+ggplot(casas_prueba %>% bind_cols(predict(ajuste, casas_prueba)),
+       aes(x = .pred, y = precio_miles, colour = condicion_venta)) +
+  geom_point() +
+  geom_abline(colour = "red") +
+  facet_wrap(~condicion_venta)
+```
+
+
+```{block2, type="resumen"}
+- Los métodos locales son usualmente fácil de explicar e implementar (aunque hacer
+  búsquedas de vecinos cercanos en una base grande puede no ser muy rápido).
+- Los métodos locales parecen tener muy pocos supuestos, y parece que pueden adaptarse
+a cualquier situación. Aparentan ser métodos "universales" en este sentido.
+- Sin embargo, veremos por qué para problemas reales no funcionan muy bien: en problemas
+reales tenemos más de unas cuantas variables, y en ese caso los métodos locales
+pueden tener fallas graves.
+```
+
+## Ejemplo: métodos locales en dimensión alta
+
