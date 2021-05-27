@@ -26,6 +26,14 @@ description: "Introducción a técnicas de machine learning usando tidymodels"
 12.Métodos de boosting para árboles
 12. Discusión de otros métodos. Implementación exitosa de proyectos de machine learning
 
+## Referencias
+
+- Una buena introducción es [Introduction to Statistical Learning](https://www.statlearning.com/), [@ISLR]
+- Más avanzado, usamos algunos ejemplos y explicaciones: [The Elements of Statistical Learning](https://web.stanford.edu/~hastie/ElemStatLearn/), [@ESL]
+- Muchos ejemplos y código son del libro en curso [Tidy Modeling with R](https://www.tmwr.org/)
+- Un libro clásico de referencia para redes neuronales es [Deep Learning](https://www.deeplearningbook.org/), [@deeplearning]
+
+
 ## Material
 
 - El código para este curso está [en este repositorio de github](https://github.com/felipegonzalez/intro-ml-em-2021). 
