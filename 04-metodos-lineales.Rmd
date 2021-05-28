@@ -102,6 +102,7 @@ Ahora simulamos el proceso en dimensión $p=40$: simulamos las entradas, y aplic
 
 ```{r} 
 library(tidymodels)
+
 set.seed(831)
 dat <- simular_datos(p = 40)
 origen <- dat %>% select(-y) %>% slice(1) %>% 
@@ -128,11 +129,66 @@ es mucho mejor que la de 1 vecino más cercano (prueba con otras semillas).
 
 Algunas veces, encontrar la estructura apropiada puede requerir más trabajo
 que simplemente escoger una familia de modelos. En el ejemplo de precios
-de casas
+de casas, por ejemplo, podriamos usar:
+
+```{r, message = FALSE}
+source("R/casas_traducir_geo.R")
+casas_split <- initial_split(casas, prop = 0.75)
+casas_entrena <- training(casas_split)
+receta_casas <- 
+  recipe(precio_miles ~ area_hab_m2 + calidad_gral + 
+           area_garage_m2 + area_sotano_m2 + 
+           area_lote_m2 + año_construccion + 
+           aire_acondicionado + condicion_venta, 
+         data = casas_entrena) %>% 
+  step_filter(condicion_venta == "Normal") %>% 
+  step_select(-condicion_venta, skip = TRUE) %>% 
+  step_cut(calidad_gral, breaks = c(3, 5, 7, 8)) %>% 
+  step_normalize(starts_with("area")) %>% 
+  #step_discretize(año_construccion, num_breaks = 4) %>% 
+  step_dummy(calidad_gral, aire_acondicionado) %>% 
+  step_interact(terms = ~ c(area_hab_m2, area_garage_m2, area_sotano_m2):starts_with("calidad_gral"))
+```
+
+```{r}
+receta_casas_prep <- prep(receta_casas, verbose = TRUE)
+datos_tbl <- juice(receta_casas_prep)
+```
+
+```{r}
+datos_tbl %>%
+  mutate(across(where(is.numeric), round, 2)) %>% 
+  DT::datatable(options = list(scrollX = TRUE))
+```
 
 
+```{r}
+flujo_casas <- workflow() %>% 
+  add_recipe(receta_casas) %>% 
+  add_model(linear_reg() %>% set_engine("lm"))
+ajuste <- fit(flujo_casas, casas_entrena)
+```
 
+```{r}
+ajuste %>% pull_workflow_fit() %>% broom::tidy() %>% 
+  mutate(across(where(is.numeric), round, 2)) %>% 
+  select(term, estimate) %>% 
+  DT::datatable()
+```
 
+Nótese que:
 
+- En esta tabla están los coeficientes $a_i$ en las covariables que creamos a partir 
+de las variables de entrada.
+- El modelo lineal *no* tiene que ser lineal *en las variables que recibimos originalmente
+en la tabla de datos*.
+- En este ejemplo, convertimos algunas variables a *dummy*, y multiplicamos algunas
+variables de área por esas variables dummy.
 
+```{r}
+metricas <- metric_set(mape, mae, rmse)
+casas_prueba <- testing(casas_split)
+metricas(casas_prueba %>% bind_cols(predict(ajuste, casas_prueba)), 
+     truth = precio_miles, estimate = .pred)
+```
 
