@@ -31,7 +31,7 @@ También es posible utilizar una ponderación de casos, donde damos más peso a 
 
 $$\hat{f}(\mathbf{x}) = \frac{\sum_{i\in N(\mathbf{x})} \phi_iy^{(i)}}{\sum_{i\in N(\mathbf{x})} \phi_i}$$
 
-donde por ejemplo $ \phi_i = \phi(||x^{(i)} - \mathbf{x}||).$ A la función $\phi$
+donde por ejemplo $\phi_i = \phi(||x^{(i)} - \mathbf{x}||).$ A la función $\phi$
 le llamamos *kernel* para la distancia, y puede tener distintas formas, por ejemplo 
 
 - Si $\phi$ es constante, se trata del kernel *rectangular*.
