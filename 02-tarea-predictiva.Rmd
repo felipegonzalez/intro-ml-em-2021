@@ -71,6 +71,26 @@ casos de prueba son análogos a las *preguntas de un examen*. Los datos de entre
 son los casos que "mostramos" al modelo para aprender a contestar esas preguntas
 ```
 
+## Medidas de error de predicción
+
+Hay varias maneras de medir el error de cada predicción particular. Es común, por ejemplo,
+usar el error cuadrático
+$$L({\mathbf{y}}^{(i)}, \hat{\mathbf{y}}^{(i)}) = \left ( {\mathbf{y}}^{(i)} - \hat{\mathbf{y}}^{(i)} \right )^2$$
+o también el error absoluto
+$$L({\mathbf{y}}^{(i)}, \hat{\mathbf{y}}^{(i)}) = \left | {\mathbf{y}}^{(i)} - \hat{\mathbf{y}}^{(i)} \right |$$
+Y usualmente definimos el **error de prueba** $\hat{Err}$ como el promedio de error sobre los datos
+de prueba. Por ejemplo, para el error absoluto calcularíamos:
+
+$$\hat{Err} = \frac{1}{m}\sum_i  \left | {\mathbf{y}}^{(i)} - \hat{\mathbf{y}}^{(i)} \right |$$
+
+Este tipo de medidas promedio es adecuado cuando hacemos muchas predicciones, y tiene
+sentido usar el promedio como medida general del desempeño predictivo. Cuando sólo queremos
+hacer unas cuantas predicciones importantes, típicamente es necesario hacer una cuantificación más
+detallada de lo que puede suceder para distintas predicciones (por ejemplo usando intervalos
+de confianza o probabilidad, como veremos más adelante).
+
+
+
 ## Ejemplo: un ajuste lineal
 
 Consideremos un ejemplo simple con datos simulados. Sólo hay una variable
@@ -128,7 +148,7 @@ preds <- predict(ajuste, datos_x_prueba)
 preds
 ```
 Finalmente, revelamos los valores de respuesta $y$ observados,
-y evaluamos:
+y evaluamos usando el error absoluto promedio sobre la muestra de prueba:
 
 ```{r}
 datos_eval <- preds %>% 
@@ -155,6 +175,8 @@ flujo_simple <- workflow() %>%
 ajuste <- fit(flujo_simple, datos_entrena)
 ```
 
+El error de prueba con una muestra independiente de la de entrenamiento es:
+
 ```{r}
 preds <- predict(ajuste, datos_x_prueba)
 datos_eval <- preds %>% 
@@ -164,7 +186,7 @@ eval_lineal <- mis_metricas(datos_eval, truth = y, estimate = .pred) %>%
 eval_lineal
 ```
 
-En este par de ejemplo, es método lineal parece funcionar mejor, pues
+En este par de ejemplos, es método lineal parece funcionar mejor, pues
 el error de prueba con una muestra grande es más bajo con el modelo lineal
 con el de 1 vecino más cercano. 
 
@@ -179,26 +201,35 @@ ggplot(datos_entrena, aes(x = x)) +
 ```
 
 
+**Nota que el error de este ajuste sobre los datos de entrenamiento es cero. Sin embargo,
+mostramos arriba que el error de prueba sobre una muestra nueva es considerablemente
+más alta.**
+
 ```{block2, type="resumen"}
-Ninguna de estas dos soluciones parece apropiada para el problema. ¿Por qué?
-  ¿Por qué predecir con una recta simple parece no apropiado? ¿Qué defectos
-ves en las predicciones que produce el model de 1-vecino?
-  Discutiremos esto en detalle más adelante.
+**Error de prueba y error de entrenamiento**
+
+- Usamos el **error de prueba** $\hat{Err}$ para evaluar el desempeño predictivo de los modelos,
+que se calcula sobre una muestra diferente a la que se usó para entrenar nuestro modelo
+
+$$\hat{Err} = \frac{1}{m}\sum_i  L \left ({\mathbf{y}}^{(i)} , \hat{\mathbf{y}}^{(i)} \right)$$
+
+
+- El **error de entrenamiento** es una cantidad que usamos más para diagnosticar que
+para evaluar, y está dada por
+
+
+$$\overline{err} = \frac{1}{N}\sum_{i=1}^N L \left (y^{(i)} , \hat{f}(x^{(i)}) \right )$$
 ```
 
 
-## Medidas de error de predicción
+Usualmente $\overline{err} < \hat{Err}$: siempre es más fácil para un modelo predecir datos
+que ha visto que datos nuevos de la muestra de prueba. 
 
-Hay varias maneras de medir el error de cada predicción particular. Es común, por ejemplo,
-usar el error cuadrático
-$$L({\mathbf{y}}^{(i)}, \hat{\mathbf{y}}^{(i)}) = \left ( {\mathbf{y}}^{(i)} - \hat{\mathbf{y}}^{(i)} \right )^2$$
-o también el error absoluto
-$$L({\mathbf{y}}^{(i)}, \hat{\mathbf{y}}^{(i)}) = \left | {\mathbf{y}}^{(i)} - \hat{\mathbf{y}}^{(i)} \right |$$
-Y usualmente definimos el **error de prueba** con el promedio de error sobre los datos
-de prueba. Por ejemplo, para el error absoluto calcularíamos:
-
-$$\hat{Err} = \frac{1}{m}\sum_i  \left | {\mathbf{y}}^{(i)} - \hat{\mathbf{y}}^{(i)} \right |$$
-
+Obsérvese que si el conjunto de prueba es una muestra iid, entonces el error
+de prueba estima el valor esperado del error cuando hacemos una predicción, que podemos
+denotar como $Err$. Si la muestra de prueba es grande, entonces $\hat{Err} \approx Err$, usando
+la ley de los grandes números. Pero ser muy complicado calcular el valor esperado de $\overline{err}$,
+pues $\hat{f}$ depende de las $(x^{(i)}, y^{(i)})$.
 
 ## La tarea del análisis predictivo 
 
@@ -236,8 +267,8 @@ tiene acceso*.
 **Ejemplo**: el concurso de Netflix (2009) siguió este patrón. De este concurso se desarrolló 
 parcialmente el área ahora floreciente de sistemas de recomendación.
 
-
-
+**Ejercicio**: Vista el sitio de Kaggle y examina algunos concursos: ¿cuáles son los datos
+de entrenamiento y cuáles son los de prueba? ¿qué medida de error es la que se utiliza?
 
 
 

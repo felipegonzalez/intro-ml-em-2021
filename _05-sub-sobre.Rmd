@@ -1,0 +1,261 @@
+# Desempeño predictivo: sobreajuste y subajuste
+
+```{r, include = FALSE}
+library(tidyverse)
+theme_set(theme_minimal(base_size = 13))
+cbb_palette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+scale_colour_discrete <- function(...) {
+  scale_colour_manual(..., values = cbb_palette)
+}
+```
+
+Una vez que hemos establecido el propósito de los modelos predictivos,
+y algunos métodos básicos, quisiéramos contestar: ¿De qué depende
+el desempeño de un modelo predictivo? ¿Cómo podemos mejorarlo? 
+
+Para establecer guías acerca de estas preguntas tendremos que 
+plantear algo de teoría. En primer lugar, pensamos en el **proceso generador
+de datos** que nos interesan. Este proceso típicamente es muy complicado, y depende
+tanto del fenómeno de interés como de la manera que recogemos los datos. 
+
+En un caso relativamente simple, supondremos que tenemos un modelo probabilístico
+para las entradas $p(x)$, y un modelo condicional $p(y|x)$ de la variable respuesta
+que queremos predecir.  Cada vez que obervamos un dato $(x, y)$ lo extraemos
+de manera independiente de estas dos distribuciones, forma que supondremos
+que el conjunto de entrenamiento
+
+$${\mathcal L} =  (x^{(1)}, y^{(1)}), (x^{(2)}, y^{(2)}), \ldots, (x^{(N)}, y^{(N)}) $$
+
+en una muestra (observaciones independientes e ideńticamente distribuidas) del
+proceso generador de datos $p(x)p(y|x)$. Más aún, supondremos que $p(y|x)$ puede
+escribirse como sigue:
+
+$y = f(x) + \epsilon$
+
+donde $f$ es una función fija desconocida, que puede ser muy complicada, y 
+$\epsilon$ es una variable aleatoria con $E(\epsilon|x) = 0$. Es decir:
+
+- Si conocemos $x$, tenemos una contribución *determinística* $f(x)$ de $x$ a $y$
+- Sin embargo, $y$ también es afectada por otras variables desconocidas, las cuales
+modelamos probabilísticas mediante la distribución de $\epsilon|x$.
+
+Ahora supongamos que nosotros ajustamos un modelo $\hat{f} = f_{\mathcal L}$,
+de modo que la predicción para las entradas $x$ es $\hat{y} = f(x)$ usando
+los datos de entrenamiento. Podemos escribir
+
+$$y - \hat{y} = (f(x) -  \hat{f}(x)) + \epsilon,$$
+
+de modo que el valor verdadero $y$ puede estar lejos de $\hat{y}$ cuando:
+
+1. La perturbación que depende de otras variables no medidas $\epsilon$ es grande
+2. Nuestra función de predicción $\hat{f}$ está lejos de la $f$ del proceso generador
+de datos.
+
+En realidad no podemos hacer mucho acerca del primer problema - excepto  
+buscar más información que podamos incluir en $x$ para ayudarnos a predecir $y$. La segunda
+razón es la que nos interesa más por el momento.
+
+Para nuestro ejemplo anterior de simulación, podemos gráficar la $f$ verdadera junto
+con datos simulados:
+
+```{r, message = FALSE}
+library(tidyverse)
+set.seed(1424)
+simular_ejemplo <- function(n, sd = 500){
+  x <- runif(n, 0, 20)
+  y <- ifelse(x < 10, 1000*sqrt(x), 1000*sqrt(10))
+  y <- y + rnorm(n, 0, sd = sd)
+  tibble(id = 1:n, x = x, y = y)
+}
+datos_entrena <- simular_ejemplo(60)
+datos_f <- tibble(x = seq(0, 20, 0.1)) %>% 
+  mutate(f = ifelse(x < 10, 1000*sqrt(x), 1000*sqrt(10)))
+ggplot(datos_f, aes(x = x)) +
+  geom_line(aes(y = f), colour = "#56B4E9", size = 2) +
+  geom_point(data = datos_entrena, aes(y = y))
+```
+
+- Nótese que para problemas reales *no* conocemos la forma de la función $f$ marcada
+en azul, sino que tenemos que inferirla de los puntos que observamos.
+
+## ¿Por qué $\hat{f}$ está lejos de $f$?
+
+Hay dos razones por las que nuestra estimación 
+$\hat{f}(x)$ puede estar lejos de $f(x)$, donde supondremos
+por ahora que $x$ está fija.
+
+1. (Sesgo) La diferencia es sistemáticamente grande para cualquier muestra de entrenamiento $\mathcal L$
+que obtengamos, y $\hat{f}(x)$ no cambia mucho cuando cambia la muestra de entrenamiento.
+2. (Variabilidad) $\hat{f}$ es muy variable, de modo que típicamente, para una muestra
+particular que observemos, $\hat{f}(x)$ cae lejos de $f(x)$.
+
+Y una tercera posibilidad es que tanto 1 como 2 ocurran. Podemos ver esto en el ejemplo
+simulado que vimos anteriormente:
+
+## Ejemplo: datos simulados
+
+Primero veamos qué sucede con regresión lineal y distintas muestras de entrenamiento:
+
+
+
+
+```{r, message=FALSE}
+library(tidymodels)
+mis_metricas <- metric_set(mae)
+receta_simple <- recipe(y ~ ., data = datos_entrena) %>%
+  update_role(id, new_role = "id")
+modelo <- linear_reg() %>% set_engine("lm")
+
+flujo_simple <- workflow() %>% 
+  add_recipe(receta_simple) %>% 
+  add_model(modelo)
+```
+
+Usaremos 100 muestras de entrenamiento:
+
+```{r}
+reps <- 1:100
+graf_lm_tbl <- map_df(reps, function(rep){
+  datos_entrena <- simular_ejemplo(15)
+  ajuste <- fit(flujo_simple, datos_entrena)
+  datos_x <- tibble(x = seq(0, 20, 0.1), id = NA)
+  preds <- predict(ajuste, datos_x) %>% 
+    bind_cols(datos_x) %>% 
+    mutate(rep = rep) %>%
+    group_by(rep) %>% nest()
+  datos_entrena <- datos_entrena %>% mutate(rep = rep) %>% 
+    group_by(rep) %>% nest()
+  left_join(datos_entrena, preds, by = "rep", suffix = c("_entrena", "_ajuste"))
+})
+```
+
+Y graficamos las primeras 9:
+
+```{r, fig.height=7, fig.width=8}
+ggplot(graf_lm_tbl %>% unnest(cols = data_ajuste) %>% filter(rep < 10)) +
+  geom_line(aes(x =x, y = .pred, group = rep), colour = "#E69F00", size = 1.2) + 
+  geom_point(data = graf_lm_tbl %>% unnest(cols = data_entrena) %>% filter(rep < 10), 
+             aes(x = x, y = y)) +
+  geom_line(data = datos_f, aes(x = x, y =f), colour = "#56B4E9", size=1.2) +
+  facet_wrap(~rep)
+```
+
+Observaciones:
+
+1. El ajuste no varía mucho de muestra a muestra de entrenamiento. Quiere decir
+que el error de predicción del modelo lineal no se debe tanto a variabilidad. 
+2. Sin embargo, vemos errores sistemáticos en las predicciones. Por ejemplo, 
+alrededor de 10, la mayoría de las observaciones (negro) están por encima de la
+predicción (línea roja). Cerca de 0, las predicciones del modelo lineal
+son tienden a ser demasiado altas.
+3. Concluimos que una buena parte del error del modelo lineal es debido a **sesgo**:
+esta estructura lineal no es apropiada para los datos, y tendemos a sobre o subpredecir
+en distintas partes de manera consistente.
+
+En contraste, veamos qué pasa con un método local:
+
+```{r}
+modelo <- nearest_neighbor(n = 1) %>% 
+  set_mode("regression") %>% set_engine("kknn")
+flujo_simple <- workflow() %>% 
+  add_recipe(receta_simple) %>% 
+  add_model(modelo)
+```
+
+Usaremos 100 muestras de entrenamiento:
+
+```{r}
+reps <- 1:100
+graf_vmc_tbl <- map_df(reps, function(rep){
+  datos_entrena <- simular_ejemplo(15)
+  ajuste <- fit(flujo_simple, datos_entrena)
+  datos_x <- tibble(x = seq(0, 20, 0.5), id = NA)
+  preds <- predict(ajuste, datos_x) %>% 
+    bind_cols(datos_x) %>% 
+    mutate(rep = rep) %>%
+    group_by(rep) %>% nest()
+  datos_entrena <- datos_entrena %>% mutate(rep = rep) %>% 
+    group_by(rep) %>% nest()
+  left_join(datos_entrena, preds, by = "rep", suffix = c("_entrena", "_ajuste"))
+})
+```
+
+Y graficamos las primeras 20:
+
+```{r, fig.height=7, fig.width=8}
+ggplot(graf_vmc_tbl %>% unnest(cols = data_ajuste) %>% filter(rep < 10)) +
+  geom_line(aes(x =x, y = .pred, group = rep), colour = "#E69F00", size = 1.2) + 
+  geom_point(data = graf_vmc_tbl %>% unnest(cols = data_entrena) %>% filter(rep < 10), 
+             aes(x = x, y = y)) +
+  geom_line(data = datos_f, aes(x = x, y =f), colour = "#56B4E9", size=1.2) +
+  facet_wrap(~rep)
+```
+
+Observaciones:
+
+1. El ajuste varía considerablemente de muestra a muestra de entrenamiento. Esto 
+quiere decir que una buena parte del error de predicción se debe a variabilidad. 
+2. No vemos errores sistemáticos en las predicciones.
+3. Concluimos que la mayor parte del error de este modelo de 2 vecinos más cercanos
+es debido a **variabilidad**: los datos de entrenamiento mueven mucho a las predicciones.
+ 
+Finalmente, podemos ver lo que sucede alrededor de $x = 10$ por ejemplo,
+extrayendo predicciones:
+
+```{r}
+preds_lm <- graf_lm_tbl %>% unnest(cols = data_ajuste) %>% 
+  ungroup() %>% filter(x == 10) %>% mutate(tipo = "lineal")
+preds_vmc <- graf_vmc_tbl %>% unnest(cols = data_ajuste) %>% 
+  ungroup() %>% filter(x == 10) %>% mutate(tipo = "1-vmc")
+preds_2 <- bind_rows(preds_lm, preds_vmc)
+```
+
+```{r}
+ggplot(datos_f %>% filter(x > 5, x < 15)) +
+  geom_line(aes(x = x, y = f), colour = "#56B4E9", size = 2) +
+  geom_boxplot(data = preds_2, aes(x = x, y = .pred, colour = tipo)) 
+```
+
+
+Estos dos modelos fallan en $x = 10$ por razones muy diferentes: uno tiene una
+estructura **rígida** que sesga las predicciones y el otro es demasiado **flexible**,
+lo que produce alta variabilidad con cambios chicos en la muestra de entrenamiento.
+
+```{block2, type="resumen"}
+El desempeño de un modelo predictivo puede ser grande por dos razones, que pueden
+ocurrir simultáneamente:
+  - La forma del modelo es demasiado flexible, lo cual lo hace fuertemente dependiente
+de los datos de entrenamiento.  El riesgo es que esta dependencia lo sujeta a particularidades
+de la muestra particular de entrenamiento que estamos usando, o dicho de otra manera "el modelo
+aprende ruido". Las predicciones son inestables o variables. 
+  - La forma del modelo es demasiado rígido, lo cual hace difícil adaptarlo a patrones
+que existen en los datos de entrenamiento. 
+El riesgo es que esta falta de adaptabilidad no
+permite que "el modelo aprenda de los datos" patrones útiles para predecir. Las predicciones son consistentemente malas.
+```
+
+Muchas veces decimos que modelos que sufren principalmente de varianza están **sobreajustados**,
+y que aquellos que sufren principalmente de sesgo tienen **subajuste**.
+
+**Discusión**: Explica por qué para nuestro ejemplo simple simulado, 1-vecino más cercano resulta
+en sobreajuste, y el modelo lineal subajuste. Explica por qué en dimensión alta métodos
+locales flexibles pueden producir tanto sesgo alto como varianza alta. Explica sin embargo
+como en el caso de que el modelo lineal es apropiado, puede ser que el sesgo y la varianza sean
+bajas aún cuando la dimensión sea alta.
+
+
+## Ejercicio
+
+Usa 5 o 10 vecinos más cercanos y repite los ejercicios que acabamos de hacer con regresión
+lineal y 1 vecino más cercano. Discute en términos de la teoría de varianza y sesgo por qué
+obtienes mejor o peor desempeño predictivo.
+
+
+## Subajuste y sobreajuste
+
+
+
+
+
+
+

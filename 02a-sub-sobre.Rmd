@@ -20,13 +20,13 @@ tanto del fenómeno de interés como de la manera que recogemos los datos.
 
 En un caso relativamente simple, supondremos que tenemos un modelo probabilístico
 para las entradas $p(x)$, y un modelo condicional $p(y|x)$ de la variable respuesta
-que queremos predecir.  Cada vez que obervamos un dato $(x, y)$ lo extraemos
+que queremos predecir.  Cada vez que observamos un dato $(x, y)$ lo extraemos
 de manera independiente de estas dos distribuciones, forma que supondremos
 que el conjunto de entrenamiento
 
 $${\mathcal L} =  (x^{(1)}, y^{(1)}), (x^{(2)}, y^{(2)}), \ldots, (x^{(N)}, y^{(N)}) $$
 
-en una muestra (observaciones independientes e ideńticamente distribuidas) del
+en una muestra (observaciones independientes e idénticamente distribuidas) del
 proceso generador de datos $p(x)p(y|x)$. Más aún, supondremos que $p(y|x)$ puede
 escribirse como sigue:
 
@@ -58,8 +58,9 @@ razón es la que nos interesa más por el momento.
 Para nuestro ejemplo anterior de simulación, podemos gráficar la $f$ verdadera junto
 con datos simulados:
 
-```{r, message = FALSE}
+```{r, message = FALSE, warning = FALSE}
 library(tidyverse)
+library(patchwork)
 set.seed(1424)
 simular_ejemplo <- function(n, sd = 500){
   x <- runif(n, 0, 20)
@@ -70,9 +71,18 @@ simular_ejemplo <- function(n, sd = 500){
 datos_entrena <- simular_ejemplo(60)
 datos_f <- tibble(x = seq(0, 20, 0.1)) %>% 
   mutate(f = ifelse(x < 10, 1000*sqrt(x), 1000*sqrt(10)))
-ggplot(datos_f, aes(x = x)) +
+g_datos <- ggplot(datos_entrena, aes(x = x, y = y)) + 
+  geom_point() + 
+  labs(subtitle = "Lo que vemos")
+g_verdadera <-  ggplot(datos_f, aes(x = x)) + 
+  geom_point(data = datos_entrena, aes(y = y)) +
   geom_line(aes(y = f), colour = "#56B4E9", size = 2) +
-  geom_point(data = datos_entrena, aes(y = y))
+  labs(subtitle = "Lo que queremos estimar")
+g_ajuste <- ggplot(datos_entrena, aes(x = x, y = y)) + 
+  geom_point(data = datos_entrena) +
+  geom_smooth(method = "loess", colour = "red", span = 0.5, size = 2, se= FALSE) +
+  labs(subtitle = "Lo que estimamos")
+g_datos + g_verdadera + g_ajuste  
 ```
 
 - Nótese que para problemas reales *no* conocemos la forma de la función $f$ marcada
@@ -92,7 +102,7 @@ particular que observemos, $\hat{f}(x)$ cae lejos de $f(x)$.
 Y una tercera posibilidad es que tanto 1 como 2 ocurran. Podemos ver esto en el ejemplo
 simulado que vimos anteriormente:
 
-## Ejemplo: datos simulados
+## Ejemplo: ajuste lineal
 
 Primero veamos qué sucede con regresión lineal y distintas muestras de entrenamiento:
 
@@ -151,6 +161,10 @@ son tienden a ser demasiado altas.
 3. Concluimos que una buena parte del error del modelo lineal es debido a **sesgo**:
 esta estructura lineal no es apropiada para los datos, y tendemos a sobre o subpredecir
 en distintas partes de manera consistente.
+
+
+## Ejemplo: vecinos más cercanos
+
 
 En contraste, veamos qué pasa con un método local:
 
@@ -221,5 +235,31 @@ Estos dos modelos fallan en $x = 10$ por razones muy diferentes: uno tiene una
 estructura **rígida** que sesga las predicciones y el otro es demasiado **flexible**,
 lo que produce alta variabilidad con cambios chicos en la muestra de entrenamiento.
 
+```{block2, type="resumen"}
+El desempeño de un modelo predictivo puede ser malo por dos razones, que pueden
+ocurrir simultáneamente:
+  
+  - La forma del modelo es demasiado flexible, lo cual lo hace fuertemente dependiente
+de los datos de entrenamiento.  El riesgo es que esta dependencia lo sujeta a particularidades
+de la muestra particular de entrenamiento que estamos usando, o dicho de otra manera "el modelo
+aprende ruido". Las predicciones son inestables o variables. 
+  - La forma del modelo es demasiado rígido, lo cual hace difícil adaptarlo a patrones
+que existen en los datos de entrenamiento. 
+El riesgo es que esta falta de adaptabilidad no
+permite que "el modelo aprenda de los datos" patrones útiles para predecir. Las predicciones son consistentemente malas.
+```
+
+Muchas veces decimos que modelos que sufren principalmente de varianza están **sobreajustados**,
+y que aquellos que sufren principalmente de sesgo tienen **subajuste**.
+
+En el caso del error cuadrático medio, es posible demostrar que, en un punto fijo x,
+se cumple la descomposición sesgo-varianza:
+
+$$\hat{Err}(x) = (E(\hat{f}(x)) - f(x))^2 + Var(\hat{f}(x)) + \sigma_x^2,$$
+
+donde el valor esperado y la varianza son cantidades teóricas que se calculan sobre
+las posibles muestras de entrenamiento. El primer término es el sesgo cuadrado, el segundo
+es la varianza de la predicción, y al último se le llama a veces el *error irreducible*, que
+es la varianza del error $\epsilon|x$.
 
 
