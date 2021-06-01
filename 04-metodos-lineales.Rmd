@@ -227,7 +227,7 @@ sim_datos <- function(n, beta){
   datos %>% mutate(y = y)
 }
 set.seed(99121)
-datos <- sim_datos(n = 4000, beta = beta)
+datos <- sim_datos(n = 4000, beta = a)
 ```
 
 ```{r}
@@ -244,7 +244,7 @@ mod_1  <- fit(flujo, dat_ent) %>% pull_workflow_fit()
 
 ```{r}
 coefs_1 <- tidy(mod_1) %>% 
-  left_join(beta)
+  left_join(a)
 ```
 
 ```{r}
@@ -261,7 +261,7 @@ Y notamos que las estimaciones no son buenas. Podemos hacer otra simulación par
 Con otra muestra de entrenamiento, vemos que las estimaciones tienen varianza alta.
 
 ```{r}
-datos_ent_2 <- sim_datos(n = 120, beta = beta)
+datos_ent_2 <- sim_datos(n = 120, beta = a)
 mod_2 <- fit(flujo, datos_ent_2) %>% pull_workflow_fit()
 coefs_2 <- tidy(mod_2)
 qplot(coefs_1$estimate, coefs_2$estimate) + xlab('Coeficientes mod 1') + 
@@ -353,7 +353,6 @@ g_3 <- ggplot(p_prueba_2, aes(x = .pred, y = y)) +
 g_2 + g_3
 ```
 
-Y vemos que los errores de predicción son más bajos.
 
 ```{r}
 metricas <- metric_set(mae, rmse)

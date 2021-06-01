@@ -344,20 +344,24 @@ ggplot(perdidas_sim, aes(x = corte, y = compras / 1000)) +
 ```
 
 
+¿Qué acción convedría tomar en este caso? ¿Puedes explicar la forma de esta curva?
+
 
 ```{block2, type = "resumen"}
 Los modelos que utilizamos generalmente son un insumo para tomar una decisión. 
-Aunque usando técnicas estándar y medidas de error estándar podemos construir modelos
+Aunque usando técnicas estándar y medidas de error usuales podemos construir modelos
 apropiados, no son suficientes para tomar esa decisión, cuyo contexto más amplio
 de costo-beneficio debe ser considerado.
 ```
 
 
 Una razón también a favor de usar medidas de error estándar es que 
+
 - Como analistas o científicos de datos, muchas veces no tenemos completo el 
 contexto de la decisión (especialmente en etapas tempranas de nuestro proyecto), 
 y debemos proveer de guías o herramientas para tomar esa decisión en la que intervienen
 más actores.
+
 - En nuestro entrenamiento como científicos de datos nos concentramos en una cuantas
 métricas que entendemos mejor, y que están o son fácilmente implementadas universalmente. Por tanto
 es conveniente dejar para análisis posterior ad-hoc el análisis costo-beneficio particular

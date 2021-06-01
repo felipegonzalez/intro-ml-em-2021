@@ -68,26 +68,26 @@ que sólo ajustamos una constante (muy rígido).
 
 ```{r}
 library(tidymodels)
-set.seed(142)
+set.seed(144)
 simular_ejemplo <- function(n, sd = 500){
   x <- runif(n, 0, 20)
   y <- ifelse(x < 10, 1000*sqrt(x), 1000*sqrt(10))
   y <- y + rnorm(n, 0, sd = sd)
   tibble(id = 1:n, x = x, y = y)
 }
-datos_entrena <- simular_ejemplo(30)
-datos_validacion <- simular_ejemplo(1000) %>% 
-  mutate(id = 30 + id)
+datos_entrena <- simular_ejemplo(50)
+datos_validacion <- simular_ejemplo(2000) %>% 
+  mutate(id = 50 + id)
 datos <- bind_rows(datos_entrena, datos_validacion)
 ejemplo_split <- list()
 # creamos un objeto con datos de entrenamiento y de prueba
-ejemplo_split[[1]] <- make_splits(list("analysis" = 1:30, "assessment" = 31:1030), datos)
+ejemplo_split[[1]] <- make_splits(list("analysis" = 1:50, "assessment" = 51:2050), datos)
 val_split <- manual_rset(ejemplo_split, "validación")
 ```
 
 ```{r}
 # nótese que usamos tune() para el número de vecinos
-modelo_vecinos <- nearest_neighbor(neighbors = tune(), weight_func = "gaussian") %>% 
+modelo_vecinos <- nearest_neighbor(neighbors = tune()) %>% 
   set_engine("kknn") %>% 
   set_mode("regression")
 flujo_vecinos <- workflow() %>% add_model(modelo_vecinos) %>% add_formula(y~x)
@@ -96,10 +96,11 @@ vecinos_grid <- grid_regular(vecinos_params, levels = 25)
 vecinos_grid
 ```
 ```{r}
+mis_metricas <- metric_set(mae)
 vecinos_eval_tbl <- tune_grid(flujo_vecinos,
                             resamples = val_split,
                             grid = vecinos_grid,
-                            metrics = metric_set(mae)) 
+                            metrics = mis_metricas) 
   
 vecinos_ajustes_tbl <- vecinos_eval_tbl %>%
   unnest(cols = c(.metrics)) %>% 
@@ -113,7 +114,7 @@ Y ahora podemos examinar cómo se ve el error de validación para cada uno de lo
 ggplot(vecinos_ajustes_tbl, aes(x = neighbors, y = .estimate)) + geom_point() + geom_line()
 ```
 
-Y confirmamos que existe un balance apropiado entre sesgo y varianza alrededor de 3-15 vecinos
+Y confirmamos que existe un balance apropiado entre sesgo y varianza alrededor de 4-15 vecinos
 más cercanos. 
 
 - ¿Qué pasaría si evaluáramos sobre el error de entrenamiento?
@@ -126,15 +127,16 @@ la tendencia clara es un aumento en el error conforme el número de vecinos aume
 ```{r}
 ejemplo_split <- list()
 # creamos un objeto con datos de entrenamiento y de prueba
-ejemplo_split[[1]] <- make_splits(list("analysis" = 1:30, "assessment" = 1:30), datos_entrena)
+ejemplo_split[[1]] <- make_splits(list("analysis" = 1:50, "assessment" = 1:50), datos_entrena)
 val_split <- manual_rset(ejemplo_split, "entrenamiento")
 vecinos_entrena_tbl <- tune_grid(flujo_vecinos,
                             resamples = val_split,
                             grid = vecinos_grid,
-                            metrics = metric_set(mae)) %>% 
+                            metrics = mis_metricas) %>% 
   unnest(cols = c(.metrics)) %>% 
   select(id, neighbors, .metric, .estimate)
-validacion_tbl <- bind_rows(vecinos_ajustes_tbl, vecinos_entrena_tbl)
+validacion_tbl <- bind_rows(vecinos_ajustes_tbl, vecinos_entrena_tbl) %>% 
+  mutate(id = fct_relevel(id, c("validación", "entrenamiento")  ))
 ggplot(validacion_tbl, aes(x = neighbors, y = .estimate, colour = id)) + geom_point() + geom_line()
 
 ```

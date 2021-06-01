@@ -33,15 +33,18 @@ escribirse como sigue:
 $$y = f(x) + \epsilon$$
 
 donde $f$ es una función fija desconocida, que puede ser muy complicada, y 
-$\epsilon$ es una variable aleatoria con $E(\epsilon|x) = 0$. Es decir:
+$\epsilon$ es una variable aleatoria con $E(\epsilon|x) = 0$, y con $x$ independiente
+de $\epsilon$. Es decir:
 
 - Si conocemos $x$, tenemos una contribución *determinística* $f(x)$ de $x$ a $y$
-- Sin embargo, $y$ también es afectada por otras variables desconocidas, las cuales
-modelamos de forma probabilística mediante la distribución de $\epsilon|x$.
+- Sin embargo, $y$ también es afectada por otras variables desconocidas independientes
+de $x$, las cuales
+modelamos de forma probabilística mediante la distribución  $\epsilon|x$.
 
 Ahora supongamos que nosotros ajustamos un modelo $\hat{f} = f_{\mathcal L}$,
-de modo que la predicción para las entradas $x$ es $\hat{y} = \hat{f}(x)$ usando
-los datos de entrenamiento. Podemos escribir
+ usando
+los datos de entrenamiento.
+La predicción para las entradas $x$ es $\hat{y} = \hat{f}(x)$. Podemos escribir
 
 $$y - \hat{y} = (f(x) -  \hat{f}(x)) + \epsilon,$$
 
@@ -264,8 +267,8 @@ es la varianza del error $\epsilon|x$.
 
 ## Reduciendo sesgo y varianza
 
-En estadística y machine learning, sesgo y varianza están en constante tensión. Nuestros
-intentos por mejorar la varianza generalmente se pagan en sesgo y viceversa. Esto lo podemos
+En estadística y machine learning, sesgo y varianza están usualmente en tensión. Nuestros
+intentos por mejorar la varianza tienden a pagarse en sesgo y viceversa. Esto lo podemos
 ver en el análisis de datos usual: para ciertos tamaños de muestra, puede ser que prefiramos
 hacer una sola estimación usando toda la muestra, pero para otros quizá hacemos estimaciones
 individuales (por ejemplo, si se tratara de preferencia de voto). La razón es que estimaciones
