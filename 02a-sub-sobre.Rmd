@@ -21,7 +21,7 @@ tanto del fenómeno de interés como de la manera que recogemos los datos.
 En un caso relativamente simple, supondremos que tenemos un modelo probabilístico
 para las entradas $p(x)$, y un modelo condicional $p(y|x)$ de la variable respuesta
 que queremos predecir.  Cada vez que observamos un dato $(x, y)$ lo extraemos
-de manera independiente de estas dos distribuciones, forma que supondremos
+de manera independiente de estas dos distribuciones, de forma que supondremos
 que el conjunto de entrenamiento
 
 $${\mathcal L} =  (x^{(1)}, y^{(1)}), (x^{(2)}, y^{(2)}), \ldots, (x^{(N)}, y^{(N)}) $$
@@ -30,17 +30,17 @@ en una muestra (observaciones independientes e idénticamente distribuidas) del
 proceso generador de datos $p(x)p(y|x)$. Más aún, supondremos que $p(y|x)$ puede
 escribirse como sigue:
 
-$y = f(x) + \epsilon$
+$$y = f(x) + \epsilon$$
 
 donde $f$ es una función fija desconocida, que puede ser muy complicada, y 
 $\epsilon$ es una variable aleatoria con $E(\epsilon|x) = 0$. Es decir:
 
 - Si conocemos $x$, tenemos una contribución *determinística* $f(x)$ de $x$ a $y$
 - Sin embargo, $y$ también es afectada por otras variables desconocidas, las cuales
-modelamos probabilísticas mediante la distribución de $\epsilon|x$.
+modelamos de forma probabilística mediante la distribución de $\epsilon|x$.
 
 Ahora supongamos que nosotros ajustamos un modelo $\hat{f} = f_{\mathcal L}$,
-de modo que la predicción para las entradas $x$ es $\hat{y} = f(x)$ usando
+de modo que la predicción para las entradas $x$ es $\hat{y} = \hat{f}(x)$ usando
 los datos de entrenamiento. Podemos escribir
 
 $$y - \hat{y} = (f(x) -  \hat{f}(x)) + \epsilon,$$
@@ -82,10 +82,10 @@ g_ajuste <- ggplot(datos_entrena, aes(x = x, y = y)) +
   geom_point(data = datos_entrena) +
   geom_smooth(method = "loess", colour = "red", span = 0.5, size = 2, se= FALSE) +
   labs(subtitle = "Lo que estimamos")
-g_datos + g_verdadera + g_ajuste  
+g_datos + g_verdadera 
 ```
 
-- Nótese que para problemas reales *no* conocemos la forma de la función $f$ marcada
+Para problemas reales *no* conocemos la forma de la función $f$ marcada
 en azul, sino que tenemos que inferirla de los puntos que observamos.
 
 ## ¿Por qué $\hat{f}$ está lejos de $f$?
@@ -261,5 +261,46 @@ donde el valor esperado y la varianza son cantidades teóricas que se calculan s
 las posibles muestras de entrenamiento. El primer término es el sesgo cuadrado, el segundo
 es la varianza de la predicción, y al último se le llama a veces el *error irreducible*, que
 es la varianza del error $\epsilon|x$.
+
+## Reduciendo sesgo y varianza
+
+En estadística y machine learning, sesgo y varianza están en constante tensión. Nuestros
+intentos por mejorar la varianza generalmente se pagan en sesgo y viceversa. Esto lo podemos
+ver en el análisis de datos usual: para ciertos tamaños de muestra, puede ser que prefiramos
+hacer una sola estimación usando toda la muestra, pero para otros quizá hacemos estimaciones
+individuales (por ejemplo, si se tratara de preferencia de voto). La razón es que estimaciones
+con grupos chicos pueden resultar en varianza alta, pero estimaciones que separan grupos diferentes
+están sesgadas con respecto al verdadero valor de cada grupo.
+
+Hay varias acciones que podemos considerar para reducir el error por sesgo, o
+mitigar el subajuste:
+
+- Usar un modelo más flexible (métodos como vecinos más cercanos).
+- Incluir otras variables de entrada (derivadas o con nueva información), efectos no lineales, interacciones, es
+decir, $p$ más grande.
+- Construir modelos distintos para distintos casos (por ejemplo, un modelo para cada región).
+- Quitar restricciones en el proceso de estimación.
+
+Por otro lado para reducir el error por varianza:
+
+- Usar un método más simple (por ejemplo, regresión lineal) o reducir el espacio
+de modelos posible que consideramos.
+- Eliminar variables de entrada que no aportan información, quitar variables derivadas ($p$ más chica).
+- No desagregar grupos.
+- Aumentar el tamaño de muestra de entrenamiento (conseguir más información, $N$ más grande).
+- Penalizar o restringir el proceso de ajuste para prevenir sobreaprendizaje.
+
+En las secciones siguientes, veremos cómo 
+
+- Podemos afinar la complejidad para modelos como
+regresión lineal y vecinos más cercanos. 
+- Cómo diagnosticar subajuste y sobreajuste.
+
+Finalmente, parte del error de predicción se debe a información que no tenemos disponible
+para hacer nuestras predicciones (aún cuando nuestro ajuste sea perfecto). Si el error
+irreducible es muy grande, entonces no hay manera de afinar o seleccionar modelos para
+obtener desempeño aceptable: por más que intentemos, ninguna metodología o habilidad nos
+va a ayudar a tener buenos resultados. **Tener información apropiada es el primer requisito
+para tener buen desempeño predictivo**.
 
 

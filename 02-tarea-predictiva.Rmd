@@ -49,7 +49,7 @@ del universo de datos para los que nos interesa hacer predicciones. Para
 esto necesitamos un **conjunto de datos de prueba** suficientemente grande y representativo, 
 que denotamos por:
 
-$${\mathcal T} = (\mathbf{x}^{(1)}, \mathbf{y}^{(1)}), (\mathbf{x}^{(1)}, \mathbf{y}^{(1)}), \ldots, (\mathbf{x}^{(m)}, \mathbf{y}^{(m)}),$$
+$${\mathcal T} = (\mathbf{x}^{(1)}, \mathbf{y}^{(1)}), (\mathbf{x}^{(2)}, \mathbf{y}^{(2)}), \ldots, (\mathbf{x}^{(m)}, \mathbf{y}^{(m)}),$$
 
 
 Al principio no conocemos la respuesta $\mathbf{y}^{(i)}$ así que hacemos las predicciones
@@ -235,7 +235,7 @@ pues $\hat{f}$ depende de las $(x^{(i)}, y^{(i)})$.
 
 En resumen, la tarea del análisis predictivo es la siguiente: dados 
 
-- Datos de entrenamiento $\mathcal{L}  = \{({x}^{(1)}, y^{1)}), ({x}^{(2)}, y^{2)}), \ldots, ({x}^{(n)}, y^{n)})\}$
+- Datos de entrenamiento $\mathcal{L}  = \{({x}^{(1)}, y^{(1)}), ({x}^{(2)}, y^{(2)}), \ldots, ({x}^{(n)}, y^{(n)})\}$
 - Datos de prueba $\mathcal{T} =  \{(\mathbf{x}^{(1)}, \mathbf{y}^{(1)}), (\mathbf{x}^{(2)}, \mathbf{y}^{(2)}), \ldots, (\mathbf{x}^{(m)}, \mathbf{y}^{m)})\}$
 
 Queremos construir una función $\mathcal{L} \to f$ (sólo depende de datos de entrenamiento) tal que el promedio
@@ -271,6 +271,100 @@ parcialmente el área ahora floreciente de sistemas de recomendación.
 de entrenamiento y cuáles son los de prueba? ¿qué medida de error es la que se utiliza?
 
 
+## El problema predictivo en contexto
+
+Los elementos que hemos mostrado arriba proveen los fundamentos para el flujo
+de trabajo en machine learning. Sin embargo, debemos tomar en cuenta que hay elementos
+adicionales que hay que tomar en cuenta al resolver problemas prácticos o tomar
+decisiones para problemas de negocios, política pública, etc. Todos estos problemas
+tienen un contexto que no se puede ignorar.
+
+En primer lugar, este contexto tienen qué ver con los costos y beneficios 
+particulares de los errores en los
+que incurrimos al tomar decisiones basadas en modelos. Estos costos son a veces 
+difíciles de elicitar y cuantificar con precisión, pero en el análisis deben tomarse en cuenta
+de alguna forma.
+
+Supongamos por ejemplo que tenemos un plan o *tratamiento* para aumentar las compras de clientes
+de una tienda en línea. Es un tratamiento relativamente costoso que no quisiéramos aplicar
+a todos los clientes, sino que quisiéramos focalizarlo a aquellos clientes que tienen
+riesgo de tener muy pocas compras, lo cual degrada su valor en nuestra cartera. Por ejemplo,
+podríamos tener que:
+
+- El tratamiento de retención cuesta 500 pesos por cliente,
+- Estimamos mediante pruebas que nuestro tratamiento aumenta en 2000 pesos de un cliente
+que gasta menos de 700 pesos, pero no aumenta las ventas si gasta más de 700 pesos.
+
+Una pieza de este problema es entonces un modelo predictivo de las compras de un cliente para
+el próximo mes en términos de su comportamiento pasado. Tenemos entonces un modelo
+predictivo $\hat{f}(x)$ para las compras del próximo mes de cada cliente. Este modelo
+tiene un error promedio de 25%. En primer lugar, después de aplicar nuestro
+modelo y obtener las predicciones obtenemos:
+
+```{r}
+clientes <- tibble(id = 1:6000) %>% 
+    mutate(pred = 5000*rbeta(length(id), 2, 3)) 
+```
+
+La pregunta es ¿a qué clientes nos conviene tratar? Pensemos que
+queremos poner un punto de corte para las predicciones, de forma que si la predicción
+es más baja que cierto punto de corte, entonces aplicamos el tratamiento.
+
+Tenemos que hacer un
+análisis **costo-beneficio**. Primero calculamos los costos:
+
+```{r}
+calc_costos <- function(corte, mejora, corte_trata, costo_trata){
+    # compras de los que recibieron tratamiento
+    compras_tratados <- filter(clientes, pred < corte) %>% 
+        mutate(compras_sim = pred * (1 + rnorm(n(), 0, 0.25))) %>%
+        mutate(compras_trata = ifelse(compras_sim < corte_trata, compras_sim + mejora, compras_sim)) %>% 
+        summarise(total = sum(compras_trata), total_cf = sum(compras_sim))
+    compras_trata <- pull(compras_tratados, total)
+    compras_cf <- pull(compras_tratados, total_cf)
+    # compras de los que no recibieron tratamiento
+    compras_no_tratados <- filter(clientes, pred > corte) %>% 
+        mutate(compras = pred * (1 + rnorm(n(), 0, 0.25))) %>%
+        summarise(total = sum(compras)) %>% 
+        pull(total)
+    total <- compras_trata -  costo_trata*nrow(filter(clientes, pred < corte)) - compras_cf 
+    total
+}
+perdidas_sim <- map_dfr(rep(seq(0 , 3000, 100), 100), 
+    function(x){
+      compras_sim <- calc_costos(x, mejora = 2500, corte_trata = 700, costo_trata = 500)
+      tibble(compras = compras_sim, corte = x)
+    }) %>% bind_rows 
+```
+
+```{r}
+ggplot(perdidas_sim, aes(x = corte, y = compras / 1000)) +
+  geom_jitter(width = 10, alpha = 0.2) +
+  ylab("Compras (miles)") + xlab("Corte de tratamiento")
+```
 
 
 
+```{block2, type = "resumen"}
+Los modelos que utilizamos generalmente son un insumo para tomar una decisión. 
+Aunque usando técnicas estándar y medidas de error estándar podemos construir modelos
+apropiados, no son suficientes para tomar esa decisión, cuyo contexto más amplio
+de costo-beneficio debe ser considerado.
+```
+
+
+Una razón también a favor de usar medidas de error estándar es que 
+- Como analistas o científicos de datos, muchas veces no tenemos completo el 
+contexto de la decisión (especialmente en etapas tempranas de nuestro proyecto), 
+y debemos proveer de guías o herramientas para tomar esa decisión en la que intervienen
+más actores.
+- En nuestro entrenamiento como científicos de datos nos concentramos en una cuantas
+métricas que entendemos mejor, y que están o son fácilmente implementadas universalmente. Por tanto
+es conveniente dejar para análisis posterior ad-hoc el análisis costo-beneficio particular
+del problema que nos interesa.
+
+*Ejemplo*: Los modelos que asignan números a casas en *street view* de google son modelos
+estándar de procesamiento de imágenes. Sin embargo, la decisión de marcar o no en el mapa
+un número requiere consideraciones especiales: por ejemplo, si existe algo de ambigüedad,
+la decisión se inclina por no asignar números. El nivel de tolerancia se evalúa considerando
+las consecuencias de etiquetar un lugar con un número equivocado.
