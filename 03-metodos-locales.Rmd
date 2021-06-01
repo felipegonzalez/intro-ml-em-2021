@@ -40,7 +40,7 @@ le llamamos *kernel* para la distancia, y puede tener distintas formas, por ejem
 Revisa [esta liga](https://epub.ub.uni-muenchen.de/1769/1/paper_399.pdf) para
 entender la implementación del paquete [@kknn] en R.
 
-El *suavizamiento loess* que quizá has utilizado para producir suavizadores en gráficas
+*Nota*: El *suavizamiento loess* que quizá has utilizado para producir suavizadores en gráficas
 de *ggplot* es una variación de estos método de vecinos cercanos ponderados. Una diferencia
 es que en este suavizamiento, en lugar de dar un número de vecinos cercanos a considerar,
 usamos una *ventana* de distancia alrededor de cada punto:
@@ -54,15 +54,21 @@ ggplot(mtcars, aes(x = disp, y = mpg)) +
 # también incorpora una regresión local
 ```
 
-## Ejemplo: ajustando el número de vecinos
+## Controlando complejidad
 
-Repetiremos nuestro ejercicio de simulación simple usando
-un número más razonable de vecinos más cercanos, y un kernel que produzca
-un suavizado más apropiado.
+En los métodos de vecinos más cercanos, podemos afinar flexibilidad-rigidez usando
+distintos números de vecinos más cercanos:
+
+- Cuando usamos 1 vecino más cercano, tenemos tantos parámetros como datos en la muestra
+de entrenamiento (muy flexible).
+- Si usamos $N$ vecinos más cercanos, sólo tenemos 1 parámetro por estimar, de forma
+que sólo ajustamos una constante (muy rígido).
+- Valores intermedios producen estimadores con distintos grados de suavidad.
+
 
 ```{r}
 library(tidymodels)
-set.seed(1424)
+set.seed(142)
 simular_ejemplo <- function(n, sd = 500){
   x <- runif(n, 0, 20)
   y <- ifelse(x < 10, 1000*sqrt(x), 1000*sqrt(10))
@@ -70,28 +76,91 @@ simular_ejemplo <- function(n, sd = 500){
   tibble(id = 1:n, x = x, y = y)
 }
 datos_entrena <- simular_ejemplo(30)
-datos_prueba <- simular_ejemplo(1000)
-datos_x_prueba <- datos_prueba %>% select(-y)
-mis_metricas <- metric_set(mae)
-receta_simple <- recipe(y ~ ., data = datos_entrena) %>%
-  update_role(id, new_role = "id")
-modelo_vecino <- nearest_neighbor(neighbors = 10, weight_func = "gaussian") %>% 
-  set_mode("regression") %>% 
-  set_engine("kknn")
-flujo_simple <- workflow() %>% 
-  add_recipe(receta_simple) %>% 
-  add_model(modelo_vecino)
-ajuste <- fit(flujo_simple, datos_entrena)
+datos_validacion <- simular_ejemplo(1000) %>% 
+  mutate(id = 30 + id)
+datos <- bind_rows(datos_entrena, datos_validacion)
+ejemplo_split <- list()
+# creamos un objeto con datos de entrenamiento y de prueba
+ejemplo_split[[1]] <- make_splits(list("analysis" = 1:30, "assessment" = 31:1030), datos)
+val_split <- manual_rset(ejemplo_split, "validación")
 ```
 
 ```{r}
-preds <- predict(ajuste, datos_x_prueba)
+# nótese que usamos tune() para el número de vecinos
+modelo_vecinos <- nearest_neighbor(neighbors = tune(), weight_func = "gaussian") %>% 
+  set_engine("kknn") %>% 
+  set_mode("regression")
+flujo_vecinos <- workflow() %>% add_model(modelo_vecinos) %>% add_formula(y~x)
+vecinos_params <- parameters(neighbors(range = c(1, 25)))
+vecinos_grid <- grid_regular(vecinos_params, levels = 25)
+vecinos_grid
+```
+```{r}
+vecinos_eval_tbl <- tune_grid(flujo_vecinos,
+                            resamples = val_split,
+                            grid = vecinos_grid,
+                            metrics = metric_set(mae)) 
+  
+vecinos_ajustes_tbl <- vecinos_eval_tbl %>%
+  unnest(cols = c(.metrics)) %>% 
+  select(id, neighbors, .metric, .estimate)
+vecinos_ajustes_tbl %>% DT::datatable()
+```
+
+Y ahora podemos examinar cómo se ve el error de validación para cada uno de los modelos:
+
+```{r}
+ggplot(vecinos_ajustes_tbl, aes(x = neighbors, y = .estimate)) + geom_point() + geom_line()
+```
+
+Y confirmamos que existe un balance apropiado entre sesgo y varianza alrededor de 3-15 vecinos
+más cercanos. 
+
+- ¿Qué pasaría si evaluáramos sobre el error de entrenamiento?
+- Explica en qué modelos el sesgo es más problemático que la varianza y viceversa
+
+Presentamos también la gráfica incluyendo el error de entrenamiento. Nótese que
+la tendencia clara es un aumento en el error conforme el número de vecinos aumenta.
+¿Por qué?
+
+```{r}
+ejemplo_split <- list()
+# creamos un objeto con datos de entrenamiento y de prueba
+ejemplo_split[[1]] <- make_splits(list("analysis" = 1:30, "assessment" = 1:30), datos_entrena)
+val_split <- manual_rset(ejemplo_split, "entrenamiento")
+vecinos_entrena_tbl <- tune_grid(flujo_vecinos,
+                            resamples = val_split,
+                            grid = vecinos_grid,
+                            metrics = metric_set(mae)) %>% 
+  unnest(cols = c(.metrics)) %>% 
+  select(id, neighbors, .metric, .estimate)
+validacion_tbl <- bind_rows(vecinos_ajustes_tbl, vecinos_entrena_tbl)
+ggplot(validacion_tbl, aes(x = neighbors, y = .estimate, colour = id)) + geom_point() + geom_line()
+
+```
+
+
+Repetiremos nuestro ejercicio de simulación simple usando
+un número más razonable de vecinos más cercanos, y un kernel que produzca
+un suavizado más apropiado.
+
+```{r}
+mejor <- select_best(vecinos_eval_tbl, metric = "mae")
+ajuste <- flujo_vecinos %>% 
+  finalize_workflow(mejor) %>% 
+  fit(data = datos_entrena)
+```
+
+```{r}
+preds <- predict(ajuste, datos_validacion)
 datos_eval <- preds %>% 
-  bind_cols(datos_prueba)
+  bind_cols(datos_validacion)
 eval_lineal <- mis_metricas(datos_eval, truth = y, estimate = .pred) %>% 
   mutate(modelo = "1-vecino") %>% select(modelo, everything())
 eval_lineal
 ```
+
+Nótese que mejoramos el desempeño predictivo. El ajuste se ve como sigue:
 
 ```{r, message = FALSE}
 graf_x <- tibble(x = seq(0, 20, 0.1), id = NA)
@@ -105,7 +174,8 @@ ggplot(datos_entrena, aes(x = x)) +
 
 
 Y vemos que el desempeño es mejor que el modelo lineal y el de 1-vecinos más
-cercanos. La forma de las predicciones parece mucho mejor adaptada a los datos.
+cercanos. La forma de las predicciones parece mejor adaptada a los datos.
+
 
 ## Ejemplo: precios de casas
 
@@ -199,9 +269,11 @@ ggplot(casas_prueba %>% bind_cols(predict(ajuste, casas_prueba)),
   facet_wrap(~condicion_venta)
 ```
 
+**Ejercicio**: prueba con distinto número de vecinos más cercanos como
+hicimos en el ejemplo de datos simulados.
+
 
 ```{block2, type="resumen"}
-
 - Los métodos locales son usualmente fácil de explicar e implementar (aunque hacer
   búsquedas de vecinos cercanos en una base grande puede no ser muy rápido).
 - Los métodos locales parecen tener muy pocos supuestos, y parece que pueden adaptarse

@@ -192,3 +192,174 @@ metricas(casas_prueba %>% bind_cols(predict(ajuste, casas_prueba)),
      truth = precio_miles, estimate = .pred)
 ```
 
+## Regresión lineal: controlando complejidad
+
+Como vimos en el ejemplo anterior, en algunos casos podemos construir modelos
+lineales de complejidad considerable (por ejemplo, transformando variables, incluyendo
+interacciones). Es posible entonces que la variabilidad de las estimaciones sea 
+grande, es decir, sobreajustar.
+
+Veamos primero un ejemplo simulado
+
+## Ejemplo: datos simulados y varianza
+
+Considermeos un problema donde tenemos unas 100 entradas con 300 casos. Supondremos
+que la función verdadera es 
+
+$$f(x) = \sum_{j=1}^{100} a_j x_j$$
+
+```{r}
+set.seed(28015)
+a_vec <- rnorm(100, 0, 0.1)
+a <- tibble(term = paste0('V', 1:length(a_vec)), valor = a_vec)
+head(a)
+```
+
+```{r}
+sim_datos <- function(n, beta){
+  p <- nrow(beta)
+  mat_x <- matrix(rnorm(n * p, 0, 0.5), n, p) + rnorm(n, 0, 1) 
+  colnames(mat_x) <- beta %>% pull(term)
+  beta_vec <- beta %>% pull(valor)
+  f_x <- mat_x %*% beta_vec 
+  y <- as.numeric(f_x) + rnorm(n, 0, 1)
+  datos <- as_tibble(mat_x) 
+  datos %>% mutate(y = y)
+}
+set.seed(99121)
+datos <- sim_datos(n = 4000, beta = beta)
+```
+
+```{r}
+library(tidymodels)
+separacion <- initial_split(datos, 0.03)
+dat_ent <- training(separacion)
+modelo <-  linear_reg() %>% set_engine("lm")
+receta <- recipe(y ~ ., dat_ent)
+flujo <- workflow() %>% 
+  add_model(modelo) %>% 
+  add_recipe(receta)
+mod_1  <- fit(flujo, dat_ent) %>% pull_workflow_fit()
+```
+
+```{r}
+coefs_1 <- tidy(mod_1) %>% 
+  left_join(beta)
+```
+
+```{r}
+ggplot(coefs_1 %>% filter(term != "(Intercept)"), 
+       aes(x = valor, y = estimate)) +
+  geom_point() +
+  xlab('Coeficientes') + 
+  ylab('Coeficientes estimados') +
+  geom_abline() 
+```
+
+Y notamos que las estimaciones no son buenas. Podemos hacer otra simulación para confirmar que el problema es que las estimaciones son muy variables.
+
+Con otra muestra de entrenamiento, vemos que las estimaciones tienen varianza alta.
+
+```{r}
+datos_ent_2 <- sim_datos(n = 120, beta = beta)
+mod_2 <- fit(flujo, datos_ent_2) %>% pull_workflow_fit()
+coefs_2 <- tidy(mod_2)
+qplot(coefs_1$estimate, coefs_2$estimate) + xlab('Coeficientes mod 1') + 
+  ylab('Coeficientes mod 2') +
+  geom_abline(intercept=0, slope =1)
+```
+
+En la práctica, nosotros tenemos una sola muestra de entrenamiento. Así que, con una muestra de tamaño  
+$n=200$
+  como en este ejemplo, obtendremos típicamente resultados no muy buenos. Estos coeficientes ruidosos afectan nuestras predicciones de manera negativa.
+  
+```{r}
+library(patchwork)
+dat_pr <- testing(separacion)
+p_entrena <- predict(mod_1, dat_ent) %>% 
+  bind_cols(dat_ent %>% select(y))
+p_prueba <- predict(mod_1, dat_pr) %>% 
+  bind_cols(dat_pr %>% select(y))
+g_1 <- ggplot(p_entrena, aes(x = .pred, y = y)) + 
+  geom_point() + 
+  xlab("Predicción") + ylab("y")
+g_2 <- ggplot(p_prueba, aes(x = .pred, y = y)) + 
+  geom_point() + 
+  xlab("Predicción") + ylab("y")
+g_1 + g_2
+```
+
+## Ejemplo: controlando la varianza
+
+Como el problema es la variabilidad de los coeficientes (no hay sesgo pues conocemos el modelo verdadero), podemos atacar este problema poniendo restricciones a los coeficientes, de manera que caigan en rangos más aceptables. Una manera de hacer esto es sustituir el problema de minimización de regresión, que es minimizar:
+
+
+$$\min_a D(a)$$
+
+con un problema penalizado
+
+$$\min_a D(a) + \lambda \sum_{j=1}^p a_j^2$$
+Si escogemos un valor relativamente grande de  $\lambda$, entonces 
+terminaremos con una solución donde los coeficientes  
+  no pueden alejarse mucho de 0, y esto previene parte del sobreajuste que observamos en nuestro primer ajuste. 
+  Otra manera de decir esto es: intentamos minimizar cuadrados, pero no permitimos 
+  que los coeficientes se alejen demasiado de cero.
+
+También es posible poner restricciones sobre el tamaño de  $\sum_j a_j^2, lo cual es equivalente al problema de penalización.
+
+En este caso obtenemos
+
+```{r}
+modelo_reg <-  linear_reg(mixture = 0, penalty = 0.1) %>% 
+  set_engine("glmnet") 
+flujo_reg <- workflow() %>% 
+  add_model(modelo_reg) %>% 
+  add_recipe(receta)
+flujo_reg <- fit(flujo_reg, dat_ent)
+mod_reg  <- flujo_reg %>% pull_workflow_fit()
+```
+
+
+```{r}
+coefs_penalizado <- tidy(mod_reg) 
+coefs_penalizado
+```
+
+```{r}
+sum(coefs_penalizado$estimate^2)
+```
+
+```{r}
+sum(coefs_1$estimate^2)
+```
+
+
+Los nuevos coeficientes estimados tienen menor variación:
+
+
+```{r}
+qplot(coefs_1$estimate, coefs_penalizado$estimate) + 
+  xlab('Coeficientes') + 
+  ylab('Coeficientes estimados') +
+  geom_abline()
+```
+
+```{r}
+p_prueba_2 <- predict(mod_reg, dat_pr) %>% 
+  bind_cols(dat_pr %>% select(y))
+g_3 <- ggplot(p_prueba_2, aes(x = .pred, y = y)) + 
+  geom_point() + 
+  xlab("Predicción") + ylab("y")
+g_2 + g_3
+```
+
+Y vemos que los errores de predicción son más bajos.
+
+```{r}
+metricas <- metric_set(mae, rmse)
+metricas(p_prueba, truth = y, estimate = .pred)
+metricas(p_prueba_2, truth = y, estimate = .pred)
+```
+
+Y vemos que los errores de predicción se reducen en más de la mitad.
+
