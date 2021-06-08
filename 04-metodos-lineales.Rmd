@@ -196,10 +196,11 @@ metricas(casas_prueba %>% bind_cols(predict(ajuste, casas_prueba)),
 
 Como vimos en el ejemplo anterior, en algunos casos podemos construir modelos
 lineales de complejidad considerable (por ejemplo, transformando variables, incluyendo
-interacciones). Es posible entonces que la variabilidad de las estimaciones sea 
-grande, es decir, sobreajustar.
+interacciones). De manera que aún cuando muchas veces se
+considera un modelo lineal como "simple" o de "baja complejidad", es posible que la variabilidad de las estimaciones sea 
+grande y sobreajustar.
 
-Veamos primero un ejemplo simulado
+Veamos primero un ejemplo simulado.
 
 ## Ejemplo: datos simulados y varianza
 
@@ -270,8 +271,8 @@ qplot(coefs_1$estimate, coefs_2$estimate) + xlab('Coeficientes mod 1') +
 ```
 
 En la práctica, nosotros tenemos una sola muestra de entrenamiento. Así que, con una muestra de tamaño  
-$n=200$
-  como en este ejemplo, obtendremos típicamente resultados no muy buenos. Estos coeficientes ruidosos afectan nuestras predicciones de manera negativa.
+$n=300$
+  como en este ejemplo, obtendremos típicamente resultados no muy buenos. Estos coeficientes ruidosos afectan nuestras predicciones de manera negativa, aún cuando el modelo ajustado parece reproducir razonablemente bien la variable respuesta:
   
 ```{r}
 library(patchwork)
@@ -280,18 +281,25 @@ p_entrena <- predict(mod_1, dat_ent) %>%
   bind_cols(dat_ent %>% select(y))
 p_prueba <- predict(mod_1, dat_pr) %>% 
   bind_cols(dat_pr %>% select(y))
-g_1 <- ggplot(p_entrena, aes(x = .pred, y = y)) + 
+g_1 <- ggplot(p_entrena, aes(x = .pred, y = y)) +
+  geom_abline(colour = "red") +
   geom_point() + 
-  xlab("Predicción") + ylab("y")
+  xlab("Predicción") + ylab("y") +
+  labs(subtitle = "Muestra de entrenamiento")
 g_2 <- ggplot(p_prueba, aes(x = .pred, y = y)) + 
+  geom_abline(colour = "red") +
   geom_point() + 
-  xlab("Predicción") + ylab("y")
+  xlab("Predicción") + ylab("y") +
+  labs(subtitle = "Muestra de entrenamiento")
 g_1 + g_2
 ```
 
 ## Ejemplo: controlando la varianza
 
-Como el problema es la variabilidad de los coeficientes (no hay sesgo pues conocemos el modelo verdadero), podemos atacar este problema poniendo restricciones a los coeficientes, de manera que caigan en rangos más aceptables. Una manera de hacer esto es sustituir el problema de minimización de regresión, que es minimizar:
+Como el problema es la variabilidad de los coeficientes (en este ejemplo no hay sesgo pues conocemos el modelo verdadero), podemos atacar este problema poniendo restricciones a los coeficientes, de manera que caigan en rangos más aceptables. 
+
+Una manera de hacer esto es restringir el rango de los coeficientes cambiando
+la función que minimizamos para ajustar el modelo lineal.
 
 
 $$\min_a D(a)$$
