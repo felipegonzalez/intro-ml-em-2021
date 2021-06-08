@@ -318,7 +318,7 @@ terminaremos con una solución donde los coeficientes
   
 - Normalmente normalizamos las variables de entrada $x$ para que tenga sentido
 normalizar todos los coeficientes con una misma $\lambda$.
-- También es posible poner restricciones sobre el tamaño de  $\sum_j a_j^2, lo cual es equivalente al problema de penalización.
+- También es posible poner restricciones sobre el tamaño de  $\sum_j a_j^2$, lo cual es equivalente al problema de penalización.
 - Usualmente no penalizamos la constante $a_0$, de forma que si $\lambda$ es muy grande, nuestro modelo ajustado predice simplemente la media de los datos de entrenamiento.
 - Este tipo de penalización se llama muchas veces $L_2$, o penalización *ridge*.
 
