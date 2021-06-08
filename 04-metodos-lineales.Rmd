@@ -211,7 +211,7 @@ $$f(x) = \sum_{j=1}^{100} a_j x_j$$
 
 ```{r}
 set.seed(28015)
-a_vec <- rnorm(100, 0, 0.1)
+a_vec <- rnorm(100, 0, 0.2)
 a <- tibble(term = paste0('V', 1:length(a_vec)), valor = a_vec)
 head(a)
 ```
@@ -219,7 +219,7 @@ head(a)
 ```{r}
 sim_datos <- function(n, beta){
   p <- nrow(beta)
-  mat_x <- matrix(rnorm(n * p, 0, 0.5), n, p) + rnorm(n, 0, 1) 
+  mat_x <- matrix(rnorm(n * p, 0, 0.5), n, p) + rnorm(n, 0, 2) 
   colnames(mat_x) <- beta %>% pull(term)
   beta_vec <- beta %>% pull(valor)
   f_x <- mat_x %*% beta_vec 
@@ -271,8 +271,7 @@ qplot(coefs_1$estimate, coefs_2$estimate) + xlab('Coeficientes mod 1') +
 ```
 
 En la práctica, nosotros tenemos una sola muestra de entrenamiento. Así que, con una muestra de tamaño  
-$n=300$
-  como en este ejemplo, obtendremos típicamente resultados no muy buenos. Estos coeficientes ruidosos afectan nuestras predicciones de manera negativa, aún cuando el modelo ajustado parece reproducir razonablemente bien la variable respuesta:
+$n=250$ como en este ejemplo, obtendremos típicamente resultados no muy buenos. Estos coeficientes ruidosos afectan nuestras predicciones de manera negativa, aún cuando el modelo ajustado parece reproducir razonablemente bien la variable respuesta:
   
 ```{r}
 library(patchwork)
@@ -290,7 +289,7 @@ g_2 <- ggplot(p_prueba, aes(x = .pred, y = y)) +
   geom_abline(colour = "red") +
   geom_point() + 
   xlab("Predicción") + ylab("y") +
-  labs(subtitle = "Muestra de entrenamiento")
+  labs(subtitle = "Muestra de prueba")
 g_1 + g_2
 ```
 
@@ -299,23 +298,31 @@ g_1 + g_2
 Como el problema es la variabilidad de los coeficientes (en este ejemplo no hay sesgo pues conocemos el modelo verdadero), podemos atacar este problema poniendo restricciones a los coeficientes, de manera que caigan en rangos más aceptables. 
 
 Una manera de hacer esto es restringir el rango de los coeficientes cambiando
-la función que minimizamos para ajustar el modelo lineal.
+la función que minimizamos para ajustar el modelo lineal. Recordamos que
+la cantidad que queremos minimizar es
 
+$$D(a) = D(a_0, a_1, \ldots, a_p) = \sum_{i=1}^N (y^{(i)} - f_a (x^{(i)}))^2 = \sum_{i=1}^N (y^{(i)} - a_0 - a_1 x_1^{(i)}-a_2x_2^{(i)} - \cdots - a_px_p^{(i)})^2$$
+
+donde la suma es sobre los datos de entrenamiento. Queremos encontrar
+$a =(a_0, a_1, \ldots, a_p)$ para resolver
 
 $$\min_a D(a)$$
 
-con un problema penalizado
+En el ejemplo que estamos considerando, vemos que existe mucha variación en los coeficientes obtenidos de muestra de entrenamiento a muestra de entrenamiento, y que algunos de ellos toman valores muy grandes positivos o negativos. Podemos entonces intentar resolver mejor el problema penalizado
 
 $$\min_a D(a) + \lambda \sum_{j=1}^p a_j^2$$
-Si escogemos un valor relativamente grande de  $\lambda$, entonces 
+Si escogemos un valor relativamente grande de  $\lambda > 0$, entonces 
 terminaremos con una solución donde los coeficientes  
   no pueden alejarse mucho de 0, y esto previene parte del sobreajuste que observamos en nuestro primer ajuste. 
-  Otra manera de decir esto es: intentamos minimizar cuadrados, pero no permitimos 
-  que los coeficientes se alejen demasiado de cero.
+  Otra manera de decir esto es: intentamos minimizar cuadrados, pero no permitimos que los coeficientes se alejen demasiado de cero, o ponemos un costo a soluciones que intentan "mover" mucho los coeficientes para ajustar mejor al conjunto de entrenamiento.
+  
+- Normalmente normalizamos las variables de entrada $x$ para que tenga sentido
+normalizar todos los coeficientes con una misma $\lambda$.
+- También es posible poner restricciones sobre el tamaño de  $\sum_j a_j^2, lo cual es equivalente al problema de penalización.
+- Usualmente no penalizamos la constante $a_0$, de forma que si $\lambda$ es muy grande, nuestro modelo ajustado predice simplemente la media de los datos de entrenamiento.
+- Este tipo de penalización se llama muchas veces $L_2$, o penalización *ridge*.
 
-También es posible poner restricciones sobre el tamaño de  $\sum_j a_j^2, lo cual es equivalente al problema de penalización.
-
-En este caso obtenemos
+En este caso obtenemos:
 
 ```{r}
 modelo_reg <-  linear_reg(mixture = 0, penalty = 0.1) %>% 
@@ -327,23 +334,23 @@ flujo_reg <- fit(flujo_reg, dat_ent)
 mod_reg  <- flujo_reg %>% pull_workflow_fit()
 ```
 
+Los coeficientes del modelo penalizado son:
 
 ```{r}
 coefs_penalizado <- tidy(mod_reg) 
 coefs_penalizado
 ```
+Nótese que efectivamente la suma de cuadrados de los coeficientes penalizados es considerablemente más chica que las del modelo no penalizado:
 
 ```{r}
-sum(coefs_penalizado$estimate^2)
+sum(coefs_penalizado$estimate[-1]^2)
 ```
 
 ```{r}
-sum(coefs_1$estimate^2)
+sum(coefs_1$estimate[-1]^2)
 ```
 
-
-Los nuevos coeficientes estimados tienen menor variación:
-
+Los nuevos coeficientes estimados tienen menor variación, y están más cercanos a los valores reales:
 
 ```{r}
 qplot(coefs_1$estimate, coefs_penalizado$estimate) + 
@@ -355,18 +362,214 @@ qplot(coefs_1$estimate, coefs_penalizado$estimate) +
 ```{r}
 p_prueba_2 <- predict(mod_reg, dat_pr) %>% 
   bind_cols(dat_pr %>% select(y))
-g_3 <- ggplot(p_prueba_2, aes(x = .pred, y = y)) + 
+g_3 <- ggplot(p_prueba_2, aes(x = .pred, y = y)) +
+  geom_abline(colour = "red") +
   geom_point() + 
-  xlab("Predicción") + ylab("y")
+  xlab("Predicción") + ylab("y") +
+  labs(subtitle = "Muestra de prueba - penalizado") 
 g_2 + g_3
 ```
 
 
 ```{r}
 metricas <- metric_set(mae, rmse)
-metricas(p_prueba, truth = y, estimate = .pred)
-metricas(p_prueba_2, truth = y, estimate = .pred)
+metricas(p_prueba, truth = y, estimate = .pred) %>% 
+  mutate(tipo = "no penalizado")
+metricas(p_prueba_2, truth = y, estimate = .pred) %>% 
+  mutate(tipo = "penalizado")
 ```
 
 Y vemos que los errores de predicción se reducen en más de la mitad.
+
+- Obsérvese que esta mejora en varianza tiene un costo: un aumento en el sesgo.
+- Sin embargo, lo que nos importa principalmente es reducir el error
+de predicción, y eso lo logramos escogiendo un balance sesgo-varianza apropiado para los datos y el problema.
+
+## Ejemplo 2: penalización y estimaciones ruidosas
+
+Considéremos los siguientes datos clásicos de Radiación Solar, Temperatura, Velocidad del Viento y 
+Ozono para distintos días en Nueva York (@chambers83):
+
+
+```{r, fig.width = 6, fig.height = 3}
+air_data <- airquality %>% 
+    mutate(Wind_cat = cut(Wind, quantile(Wind, c(0, 0.33, 0.66, 1)), include.lowest = T)) %>% 
+    filter(!is.na(Ozone) & !is.na(Solar.R))
+air <- air_data
+ggplot(air, aes(x = Solar.R, y = Ozone,  colour = Temp)) + geom_point() +
+    facet_wrap(~Wind_cat, ncol = 3) + 
+    scale_colour_gradientn(colours = rainbow(2, rev = TRUE))
+
+```
+La gráfica muestra algunas interacciones y relaciones no lineales. Formulamos
+un modelo lineal como sigue:
+
+```{r}
+receta_ozono <- recipe(Ozone ~ Temp + Wind + Solar.R,
+                       data = air) %>% 
+  step_poly(Temp, Wind, Solar.R, degree = 2, options = list(raw = TRUE)) %>% 
+  step_interact(terms = ~ Temp_poly_1:Wind_poly_1 + Temp_poly_1:Solar.R_poly_1 +
+                  Wind_poly_1:Solar.R_poly_1)
+ajuste_ozono <- workflow() %>% 
+  add_recipe(receta_ozono) %>% 
+  add_model(linear_reg() %>% set_engine("lm")) %>% 
+  fit(air)
+```
+
+
+ Y el ajuste se ve como sigue:
+ 
+```{r}
+pred_grid <- expand_grid(Wind = c(5,10,15), 
+                         Temp = seq(60, 90, 10), 
+                         Solar.R = seq(20, 300, by = 10)) %>% 
+    mutate(Wind_cat = cut(Wind, quantile(airquality$Wind, c(0, 0.33, 0.66, 1)), include.lowest = T))
+pred_grid <- pred_grid %>% 
+  bind_cols(predict(ajuste_ozono, pred_grid))
+g_lineal <- ggplot(air, aes(x = Solar.R, colour = Temp)) + 
+    geom_point(aes(y = Ozone)) +
+    facet_wrap( ~ Wind_cat) + 
+    scale_colour_gradientn(colours = rainbow(2, rev = TRUE)) +
+    geom_line(data = pred_grid, aes(y = .pred, group = interaction(Temp, Wind_cat)), size = 1) +
+    labs(subtitle = "Curvas de modelo lineal, para viento = 5, 10, 15") 
+g_lineal
+```
+
+Nótese que algunos aspectos de este modelo parecen ser ruidosos: por ejemplo,
+el comportamiento de las curvas para el primer pánel (donde hay pocos datos
+de temperatura baja), el hecho de que en algunos casos parece haber 
+curvaturas decrecientes e incluso predicciones negativas. No deberíamos dar
+mucho crédito a las predicciones
+de este modelo, y tiene peligro de producir predicciones desastrosas.
+
+Sin embargo, si usamos algo de regularización:
+
+```{r}
+ajuste_ozono <- workflow() %>% 
+  add_recipe(receta_ozono) %>% 
+  add_model(linear_reg(mixture = 0, penalty = 0.05) %>% 
+              set_engine("glmnet", lambda.min.ratio = 1e-20)) %>% 
+  fit(air)
+# nota: normalmente no es necesario usar lambda.min.ratio
+```
+
+
+ Y el ajuste se ve como sigue:
+ 
+```{r}
+pred_grid <- expand_grid(Wind = c(5,10,15), 
+                         Temp = seq(60, 90, 10), 
+                         Solar.R = seq(20, 300, by = 10)) %>% 
+    mutate(Wind_cat = cut(Wind, quantile(airquality$Wind, c(0, 0.33, 0.66, 1)), include.lowest = T))
+pred_grid <- pred_grid %>% 
+  bind_cols(predict(ajuste_ozono, pred_grid))
+g_lineal <- ggplot(air, aes(x = Solar.R, colour = Temp)) + 
+    geom_point(aes(y = Ozone)) +
+    facet_wrap( ~ Wind_cat) + 
+    scale_colour_gradientn(colours = rainbow(2, rev = TRUE)) +
+    geom_line(data = pred_grid, aes(y = .pred, group = interaction(Temp, Wind_cat)), size = 1) +
+    labs(subtitle = "Curvas de modelo lineal, para viento = 5, 10, 15") 
+g_lineal
+```
+Este ajuste 
+
+
+## Regresión ridge: escogiendo el parámetro de complejidad
+
+Como vimos antes, no es posible seleccionar el parámetro $\lambda$
+usando la muestra de entrenamiento (¿con qué $\lambda$ cómo se obtiene el menor 
+error cuadrático medio sobre la muestra de entrenamiento). Usaremos un
+conjunto de validación relativamente grande
+
+```{r}
+set.seed(191)
+# esta proporción es para ejemplificar
+casas_split <- initial_split(casas, prop = 0.25) 
+casas_entrena <- training(casas_split)
+receta_casas <- 
+  recipe(precio_miles ~ calidad_gral +
+           area_hab_m2 + 
+           area_garage_m2 + area_sotano_m2 + 
+           area_2o_piso_m2 +
+           area_lote_m2 + 
+           año_construccion + año_venta +
+           nombre_zona + 
+           aire_acondicionado + condicion_venta +
+           condicion_gral + condicion_exteriores + tipo_sotano +
+           calidad_sotano +
+           baños_completos +  
+           forma_lote + tipo_edificio + estilo + num_coches +
+           año_venta, 
+         data = casas_entrena) %>% 
+  step_filter(condicion_venta == "Normal") %>% 
+  step_select(-condicion_venta, skip = TRUE) %>% 
+  step_cut(calidad_gral, breaks = c(3, 5, 7, 8)) %>% 
+  step_cut(condicion_gral, breaks = c(3, 5, 7, 8)) %>% 
+  step_mutate(sin_piso_2 = as.numeric(area_2o_piso_m2 == 0)) %>% 
+  step_unknown(tipo_sotano, calidad_sotano, new_level = "sin sótano") %>% 
+  step_other(nombre_zona, threshold = 0.02) %>% 
+  step_dummy(calidad_gral, condicion_gral, condicion_exteriores, aire_acondicionado,
+        tipo_sotano, forma_lote, tipo_edificio, estilo,
+        nombre_zona, calidad_sotano) %>% 
+  step_interact(terms = ~ c(area_hab_m2, area_garage_m2, 
+        area_sotano_m2, area_2o_piso_m2):starts_with("calidad_gral")) %>% 
+  step_interact(terms = ~ area_sotano_m2:starts_with("calidad_sotano")) %>% 
+  step_interact(terms = ~ c(area_hab_m2, area_garage_m2, 
+        area_sotano_m2, area_2o_piso_m2):starts_with("condicion_gral")) %>% 
+  step_interact(terms = ~ c(area_hab_m2, area_garage_m2, 
+        area_sotano_m2, area_2o_piso_m2):starts_with("nombre_zona"))
+```
+
+Para ver el número de entradas de este modelo:
+
+```{r}
+prep(receta_casas) %>% juice %>% dim()
+```
+
+
+
+```{r}
+modelo_penalizado <- linear_reg(mixture = 0.0, penalty = tune()) %>% 
+  set_engine("glmnet", lambda.min.ratio = 1e-30)
+flujo_casas <- workflow() %>% 
+  add_recipe(receta_casas) %>% 
+  add_model(modelo_penalizado)
+```
+
+Construimos los objetos para
+
+```{r}
+# creamos un objeto con datos de entrenamiento y de prueba
+val_split <- manual_rset(casas_split %>% list, "validación")
+lambda_params <- parameters(penalty(range = c(-3, 3), 
+                                    trans = log10_trans()))
+lambda_grid <- grid_regular(lambda_params, levels = 20)
+lambda_grid
+```
+
+```{r}
+mis_metricas <- metric_set(rmse)
+eval_tbl <- tune_grid(flujo_casas,
+                      resamples = val_split,
+                      grid = lambda_grid,
+                      metrics = mis_metricas) 
+vecinos_ajustes_tbl <- eval_tbl %>%
+  unnest(cols = c(.metrics)) %>% 
+  select(id, penalty, .metric, .estimate)
+vecinos_ajustes_tbl %>% DT::datatable()
+```
+
+
+```{r}
+ggplot(vecinos_ajustes_tbl, aes(x = penalty, y = .estimate, colour = .metric)) + 
+  geom_point() + geom_line() + scale_x_log10() 
+```
+
+Y vemos que con una penalización alrededor de $\lambda = 1$ podemos obtener
+mejor desempeño que con el modelo no regularizado.
+
+**Pregunta**: en qué partes de la gráfica es relativamente grande
+la varianza? ¿en qué parte es relativamente grande el sesgo?
+
+
 
