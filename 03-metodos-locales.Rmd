@@ -97,8 +97,8 @@ modelo_vecinos <- nearest_neighbor(neighbors = tune()) %>%
 flujo_vecinos <- workflow() %>% 
   add_model(modelo_vecinos) %>% 
   add_formula(y~x)
-vecinos_params <- parameters(neighbors(range = c(1, 35)))
-vecinos_grid <- grid_regular(vecinos_params, levels = 35)
+vecinos_params <- parameters(neighbors(range = c(1, 25)))
+vecinos_grid <- grid_regular(vecinos_params, levels = 25)
 vecinos_grid
 ```
 ```{r}
@@ -116,7 +116,8 @@ vecinos_ajustes_tbl %>% DT::datatable()
 Y ahora podemos examinar cómo se ve el error de validación para cada uno de los modelos:
 
 ```{r}
-ggplot(vecinos_ajustes_tbl, aes(x = neighbors, y = .estimate)) + geom_point() + geom_line()
+ggplot(vecinos_ajustes_tbl, aes(x = neighbors, y = .estimate)) + 
+  geom_point() + geom_line() 
 ```
 
 Y confirmamos que existe un balance apropiado entre sesgo y varianza alrededor de 4-15 vecinos
@@ -142,7 +143,7 @@ vecinos_entrena_tbl <- tune_grid(flujo_vecinos,
   select(id, neighbors, .metric, .estimate)
 validacion_tbl <- bind_rows(vecinos_ajustes_tbl, vecinos_entrena_tbl) %>% 
   mutate(id = fct_relevel(id, c("validación", "entrenamiento")  ))
-ggplot(validacion_tbl, aes(x = neighbors, y = .estimate, colour = id)) + geom_point() + geom_line()
+ggplot(validacion_tbl, aes(x = neighbors, y = .estimate, colour = id)) + geom_point() + geom_line() 
 
 ```
 
