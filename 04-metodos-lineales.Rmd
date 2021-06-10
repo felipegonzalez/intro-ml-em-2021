@@ -553,15 +553,15 @@ eval_tbl <- tune_grid(flujo_casas,
                       resamples = val_split,
                       grid = lambda_grid,
                       metrics = mis_metricas) 
-vecinos_ajustes_tbl <- eval_tbl %>%
+ridge_ajustes_tbl <- eval_tbl %>%
   unnest(cols = c(.metrics)) %>% 
   select(id, penalty, .metric, .estimate)
-vecinos_ajustes_tbl %>% DT::datatable()
+ridge_ajustes_tbl %>% DT::datatable()
 ```
 
 
 ```{r}
-ggplot(vecinos_ajustes_tbl, aes(x = penalty, y = .estimate, colour = .metric)) + 
+ggplot(ridge_ajustes_tbl, aes(x = penalty, y = .estimate, colour = .metric)) + 
   geom_point() + geom_line() + scale_x_log10() 
 ```
 
@@ -570,6 +570,163 @@ mejor desempeño que con el modelo no regularizado.
 
 **Pregunta**: en qué partes de la gráfica es relativamente grande
 la varianza? ¿en qué parte es relativamente grande el sesgo?
+
+## Regresión lasso
+
+Se puede controlar la varianza de mínimos cuadrados de otras maneras. Cuando
+la varianza proviene también de la inclusión de variables que no necesariamente
+están relacionadas con la respuesta, podemos usar **métodos de selección
+de variables**, como en [stepwise regression](https://en.wikipedia.org/wiki/Stepwise_regression#:~:text=In%20statistics%2C%20stepwise%20regression%20is,based%20on%20some%20prespecified%20criterion.), por ejemplo.
+
+Otra manera interesante de lograr mejor desempeño predictivo con
+modelos más parsimoniosos resulta de usar un término de penalización
+distinto al de ridge. En ridge, el problema que resolvemos es minimizar
+el objetivo
+
+$$D(a) + \lambda \sum_{j=1}^p a_j^2$$
+
+En **regresión lasso**, usamos una penalización de tipo $L_1$:
+
+$$D(a) + \lambda \sum_{j=1}^p |a_j|$$
+En un principio, no parece ser muy diferente a *ridge*. Veremos sin embargo
+que usar esta penalización también se puede ver como un proceso
+de selección de variables.
+
+## Lasso vs Ridge
+
+Consideramos cómo predecir el porcentaje de grasa corporal
+a partir de distintas mediciones de dimensiones corporales:
+
+```{r, message = FALSE}
+dat_grasa <- read_csv(file = './datos/bodyfat.csv') 
+set.seed(183)
+grasa_particion <- initial_split(dat_grasa, 0.7)
+grasa_ent <- training(grasa_particion)
+grasa_pr <- testing(grasa_particion)
+```
+
+```{r}
+# nota: con glmnet no es necesario normalizar, pero aquí lo hacemos
+# para ver los coeficientes en términos de las variables estandarizadas:
+grasa_receta <- recipe(grasacorp ~ ., grasa_ent) %>% 
+  update_role(cadera, cuello, muñeca, tobillo, rodilla, new_role = "ninguno") %>% 
+  step_normalize(all_predictors()) %>% 
+  prep()
+modelo_2 <- linear_reg(mixture = 0, penalty = 0) %>% 
+  set_engine("glmnet", lambda.min.ratio = 1e-20) 
+flujo_2 <- workflow() %>% 
+  add_model(modelo_2) %>% 
+  add_recipe(grasa_receta)
+flujo_2 <- flujo_2 %>% fit(grasa_ent) 
+modelo_2 <- pull_workflow_fit(flujo_2)
+coefs <- modelo_2 %>% pluck("fit") %>%tidy() %>% 
+  filter(term != "(Intercept)")
+ggplot(coefs, aes(x = lambda, y = estimate, colour = term)) +
+  geom_line(size = 1.4) + scale_x_log10() +
+  scale_colour_manual(values = cbb_palette) +
+  labs(subtitle = "Regularizacion L2")
+```
+
+Estas gráfica se llama **traza** de los coeficientes, y nos muestra
+cómo cambian los coefi´cientes conforme cambiamos la regularización.
+Nótese que cuando la regularización es chica, obtenemos algunos
+resultados contra-intuitivos como que el coeficiente de peso es negativo
+para predecir el nivel de grasa corporal. Cuando regularizamos más, este coeficiente
+es positivo. La razón de esto tiene qué ver con la correlación fuerte
+de las variables de entrada, por
+ejemplo:
+
+```{r}
+cor(grasa_ent %>% select(peso, abdomen, biceps, muslo)) %>% 
+  round(2)
+```
+
+Ahora probemos con regularización lasso:
+
+```{r, message=FALSE, warning=FALSE}
+## mixture = 1 es regresión lasso
+modelo_1 <-  linear_reg(mixture = 1, penalty = 0) %>% 
+  set_engine("glmnet", lambda.min.ratio = 1e-20) 
+flujo_1 <- workflow() %>% 
+  add_model(modelo_1) %>% 
+  add_recipe(grasa_receta)
+```
+
+```{r}
+flujo_1 <- flujo_1 %>% fit(grasa_ent) 
+modelo_1 <- pull_workflow_fit(flujo_1)
+coefs <- modelo_1 %>% pluck("fit") %>% tidy() %>% 
+  filter(term != "(Intercept)")
+ggplot(coefs, aes(x = lambda, y = estimate, colour = term)) +
+  geom_line(size = 1.4) + scale_x_log10() +
+  scale_colour_manual(values = cbb_palette) +
+  labs(subtitle = "Regularizacion L1")
+```
+Y nótese que conforme aumentamos la penalización, algunas variables 
+salen del modelo (sus coeficientes son cero). Por ejemplo, para
+un valor de $lambda$ intermedio, obtenemos un modelo simple de la forma:
+
+```{r}
+coefs %>% filter(step == 22) %>% 
+  select(term, estimate, lambda)
+```
+
+
+Y nótese que este modelo solo incluye 4 variables.La traza confirma que la regularización lasso, además de encoger 
+coeficientes, saca variables del modelo conforme el valor de regularización
+aumenta.
+
+La razón de esta diferencia cualitativa entre cómo funciona lasso y ridge se puede
+entender considerando que los problemas de penalización mostrados
+arriba puede escribirse en forma de problemas de restricción. Por ejemplo,
+lasso se puede reescribir como el problema de resolver
+
+$$\min_a D(a)$$
+sujeto a
+$$\sum_{i=1}^p a_j^2 < t$$
+En la gráfica siguiente (tomada de @ESL), lasso está a la izquierda y ridge está 
+a la derecha, las curvas rojas son curvas de nivel de la suma de cuadrados $D(a)$,
+y $\hat{beta}$ es el estimador usual de mínimos cuadrados de los coeficientes (sin penalizar).
+En azul está la restricción:
+
+
+![Ridge vs Lasso](figuras/ridge_lasso.png)
+
+
+```{block2, type='resumen'}
+
+- En regresión ridge, los coeficientes se encogen gradualmente desde la solución
+no restringida hasta el origen. Ridge es un método de **encogimiento de coeficientes.**
+  Regresión ridge es especialmente útil cuando tenemos varias variables de entrada
+fuertemente **correlacionadas**. Regresión ridge intenta encoger juntos coeficientes de variables
+correlacionadas para reducir varianza en las predicciones.
+
+
+- En regresión lasso, los coeficientes se encogen gradualmente, pero también
+se excluyen  variables del modelo. Por eso lasso es un método de
+**encogimiento y selección de variables**. Lasso encoge igualmente coeficientes 
+para reducir varianza, pero también comparte
+similitudes con *regresión de mejor subconjunto*, en donde para cada número de variables $l$
+buscamos escoger las $l$ variables que den el mejor modelo. Sin embargo, el enfoque
+de lasso es más escalable y puede calcularse de manera más simple.
+
+```
+
+**Nota**: es posible también utilizar una penalización que mezcla ridge
+y lasso:
+
+$$\lambda \left (\alpha \sum_j |a_j| + (1-\alpha)\sum_j a_j^2 \right )$$
+
+y $\alpha$ es un parámetro que podemos afinar:
+
+```{r}
+# elastic net = ridge + lasso
+# mixture es alpha y penalty es lambda
+modelo_enet <- linear_reg(mixture = 0.5, penalty = 0.05)
+# y si queremos afinar:
+modelo_enet <- linear_reg(mixture = tune(), penalty = tune())
+```
+
 
 
 
