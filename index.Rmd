@@ -23,7 +23,7 @@ description: "Introducción a técnicas de machine learning usando tidymodels"
 9. Ideas básicas para redes neuronales profundas
 10. Árboles de decisión
 11. Bosques aleatorios
-12.Métodos de boosting para árboles
+12. Métodos de boosting para árboles
 13. Discusión de otros métodos. Implementación exitosa de proyectos de machine learning
 
 ## Referencias

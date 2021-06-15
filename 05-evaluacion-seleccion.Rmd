@@ -50,7 +50,7 @@ pues no tenemos muchos datos (al dividir la muestra obtendríamos
 un modelo relativamente malo en relación al que resulta de todos los datos).
 
 Un criterio para seleccionar la regularización adecuada
-es el de **validación cruzada*, que es un método computacional
+es el de **validación cruzada**, que es un método computacional
 para producir una estimación interna (usando sólo muestra de entrenamiento)
 del error de predicción.
 
@@ -222,11 +222,10 @@ es el siguiente:
 pasos de preprocesamiento **para cada subdivisión** de los datos.
 - Un error común que invalida la estimación de validación cruzada es preprocesar
 primero los datos, y luego hacer validación cruzada sobre los datos preprocesados.
-- Esto es especialmente crítico cuando el preprocesamiento utiliza la variable respuesta
-para construir variables (por ejemplo, decidir cortes, filtrar por correlación, etc.)
+- Esto es especialmente crítico cuando el preprocesamiento utiliza la variable respuesta para construir o filtrar variables de entrada (por ejemplo, decidir cortes, filtrar por correlación, etc.)
 ```
 
-Un ejemplo dramático de este problema puede verse en el siguiente ejemplo:
+Un caso dramático de este problema puede verse en el siguiente ejemplo:
 
 Supongamos que tenemos una respuesta $y$ independiente de las entradas $x$, de forma
 que la mejor predicción que podemos hacer es la media de la $y$, cuyo error cuadrático
@@ -286,6 +285,14 @@ resultados <- fit_resamples(flujo, resamples = vc_particion_comp, metrics = metr
 resultados
 ```
 Y vemos que esta estimación es consistente con que la desviación estándar de $y$ es igual a 10.
+
+```{block2, type="observacion"}
+*Tidymodels* en general está construido para promover buenas
+práticas y evitar en lo posible estos
+errores en la validación cruzada. Al ajustar flujos que incluyen recetas de 
+preprocesamineto, todos los pasos se aplican en cada vuelta de validación
+cruzada de manera indepediente.
+```
 
 
 ## ¿Cómo se desempeña validación cruzada como estimación del error?
@@ -456,7 +463,13 @@ mejor en este caso es utilizar una muestra de prueba.
 ver el [paper](https://arxiv.org/pdf/2104.00673.pdf), y está implementado
 en *tidymodels* con la función *nested_cv*) que aún cuando
 es más exigente computacionalmente, produce mejores resultados cuando
-queremos utilizarla como estimación del error de prueba
+queremos utilizarla como estimación del error de prueba.
+- Estratificación: especialmente en casos donde queremos predecir una
+variable categórica con algunas clases muy minoritarias, o cuando
+la respuesta tiene colas largas, puede ser buena idea **estratificar** la
+selecciones de muestra de prueba y las muestras de validación cruzada, de manera
+que cada corte es similar en composición de la variable respuesta. Esto
+es para evitar variación debida a la composición de muestras de validación, especialmente cuando la muestra de entrenamiento es relativamente chica.
 
 ## Validación cruzada repetida
 
@@ -469,12 +482,12 @@ ajustamos un total de 50 modelos. Esto no es lo mismo que validación cruzada co
 50 vueltas. Hay razones para no subdividir tanto la muestra de entrenamiento:
 
 ```{block2, type="resumen"}
-- Aunque esquemas de validación cruzad-$k$ con $k$ grande pueden ser factibles,
+- Aunque esquemas de validación cruzada-$k$ con $k$ grande pueden ser factibles,
 estos no se favorecen por la cantidad de cómputo necesaria y porque presentan
-sesgo hacia modelos demasiado complejos [@shao].
+sesgo hacia modelos más complejos [@shao].
 - En el extremo, podemos hacer validación *leave-one-out* (LOOCV), pero 
 - En estudios de simulación se desempeñan mejor métodos con $k=5, 10, 20$, y
-cuando es posible, usar repeticiones
+cuando es posible, es mejor usar repeticiones
 ```
 
 
@@ -491,6 +504,8 @@ metricas_vc <- tune_grid(flujo_reg,
   resamples = validacion_particion,
   grid = bf_grid,
   metrics = metric_set(rmse, mae)) 
+mejor <- select_best(metricas_vc, metric = "rmse")
+mejor_1ee <- select_by_one_std_err(metricas_vc, metric = "rmse", desc(penalty))
 metricas_vc %>% unnest(.metrics)
 ```
 Vemos que esta función da un valor del error para cada vuelta de validación
@@ -510,14 +525,10 @@ g_1 <- ggplot(metricas_resumen %>% filter(.metric == "rmse"),
        aes(x = penalty, y = mean, ymin = mean - std_err, ymax = mean + std_err)) +
   geom_linerange() +
   geom_point(colour = "red") +
-  scale_x_log10()
+  scale_x_log10() +
+  geom_vline(xintercept = c(mejor$penalty, mejor_1ee$penalty), colour = "blue")
 g_1
 ```
-
-```{r}
-
-```
-
 
 
 
