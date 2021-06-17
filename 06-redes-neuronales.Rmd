@@ -96,7 +96,7 @@ Superpositions of a Sigmoidal Function).
 Comencemos por un ejemplo simple de clasificación binaria
 con una sola entrada $x$. Supondremos que el modelo verdadero
 está dado por:
-```{r}
+```{r, fig.height=3, fig.width = 4}
 h <- function(x){
     1/(1 + exp(-x)) # es lo mismo que exp(x)/(1 + exp(x))
 }
@@ -107,7 +107,7 @@ x_1 <- runif(20, -2, 2)
 y_1 <- rnorm(20, atan(2 - 3 * x_1^2), 0.5)
 datos <- data.frame(x_1, y_1)
 dat_p <- data.frame(x, f)
-g <- qplot(x, f, geom='line', colour="red")
+g <- qplot(x, f, geom='line')
 g + geom_point(data = datos, aes(x = x_1, y = y_1), colour = 'red')
 ```
 
@@ -145,23 +145,23 @@ a_2 <- h(6 - 6 * x)  # -6(x - 1/6) # una es una versión desplazada de otra.
 
 Las funciones $a_1$ y $a_2$ dependen de $x$ de la siguiente forma:
 
-```{r}
+```{r, fig.height=3, fig.width = 4}
 dat_a <- tibble(x = x, a_1 = a_1, a_2 = a_2)
 dat_a %>% pivot_longer(a_1:a_2, names_to = "variable", values_to = "valor") %>% 
 ggplot(aes(x=x, y=valor, colour=variable, group=variable)) + geom_line()
 ```
 
 Si las escalamos y sumamos, obtenemos
-```{r}
+```{r, fig.height=3, fig.width = 4}
 dat_a <- dat_a %>%  
-  mutate(suma = -1 - 2 * a_1 + 2 * a_2)
+  mutate(suma =  -  a_1 +  a_2)
 dat_a_2 <- dat_a %>% pivot_longer(a_1:suma, names_to = "variable", values_to = "valor")
 ggplot(dat_a_2, aes(x = x, y = valor, colour = variable, group = variable)) + geom_line()
 ```
 
 y finalmente calculamos la salida:
 
-```{r}
+```{r, fig.height=3, fig.width = 4}
 dat_2 <- tibble(x, y = (-1 - 2 * a_1 + 2 * a_2))
 ggplot(dat_2, aes(x = x, y = y)) + geom_line()+
 geom_line(data=dat_p, aes(x = x,y = f), col = "red") + 
@@ -239,7 +239,7 @@ beta
 ```
 
 Y ahora podemos graficar con el vector $\beta$ encontrado:
-```{r}
+```{r, fig.height=3, fig.width = 4}
 ## hacer feed forward con beta encontrados
 p_2 <- feed_fow(beta, x)
 dat_2 <- data.frame(x, p_2 = p_2)
@@ -275,7 +275,7 @@ devianza_reg <- function(x, y, lambda){
 }
 ```
 
-```{r}
+```{r, fig.height=3, fig.width = 4}
 dev_r <- devianza_reg(x_1, y_1, 0.01) # crea función dev
 set.seed(5)
 salida <- optim(rnorm(7), dev_r, method='BFGS') # inicializar al azar punto inicial
@@ -330,7 +330,7 @@ geom_line(data = dat_p, aes(x = x, y = f), col='red') +
    geom_point(data = datos, aes(x = x_1, y = y_1))
 ```
 
-Los coeficientes obtenidos están aquí: Nótese: la primera componente de
+Los coeficientes obtenidos están abajo. Nótese: la primera componente de
 la lista son los coeficientes de la unidad 1 y 2 para $x$. La segunda 
 son los sesgos u ordenadas al origen, la tercera los coeficientes
 de la respuesta para las unidades 1 y 2, y el cuarto es el sesgo u ordenada
@@ -347,7 +347,7 @@ get_weights(ejemplo_mod)
 Es posible capturar interacciones con redes neuronales. Consideremos el siguiente
 ejemplo simple:
 
-```{r}
+```{r, fig.height=3, fig.width = 4}
 f <- function(x1, x2){
   ( 10*(2 * x1 - 1)*(2 * x2 - 1))
 }
@@ -359,9 +359,9 @@ ggplot(dat, aes(x=x1, y=x2)) + geom_tile(aes(fill=f))
 Esta función puede entenderse como un o exclusivo: la probabilidad es alta
 sólo cuando $x_1$ y $x_2$ tienen valores opuestos ($x_1$ grande pero $x_2$ chica y viceversa). 
 
-No es posible modelar esta función mediante el modelo logístico (sin interacciones).
-Pero podemos incluir la interacción en el modelo logístico o intentar
-usar una red neuronal. Primero simulamos unos datos y probamos el modelo logístico
+No es posible modelar esta función mediante el modelo lineal (sin interacciones).
+Pero podemos incluir la interacción en el modelo lineal o intentar
+usar una red neuronal. Primero simulamos unos datos y probamos el modelo lineal
 con y sin interacciones:
 
 ```{r}
@@ -374,22 +374,22 @@ mod_1 <- lm(y ~ x1 + x2, data = dat_ent)
 mod_1
 ```
 
-El resultado del modelo logístico no es bueno:
+El resultado del modelo lineal es malo:
 
-```{r}
+```{r, fig.height=3, fig.width = 4}
 qplot(predict(mod_1) , dat_ent$y)
 ```
 
 Sin embargo, agregando una interacción lo mejoramos considerablemente 
 (examina la devianza y el error de clasificación):
 
-```{r}
+```{r, fig.height=3, fig.width = 4}
 mod_2 <- lm(y ~ x1 + x2 + x1:x2, data = dat_ent)
 mod_2
 qplot(predict(mod_2), dat_ent$y)
 ```
  
- Observese la gran diferencia de devianza entre los dos modelos (en este caso,
+Obsérvese la gran diferencia de devianza entre los dos modelos (en este caso,
  el sobreajuste no es un problema).
 
 Ahora consideramos qué red neuronal puede ser apropiada.
@@ -414,7 +414,7 @@ historia <- mod_inter %>%
 
 Verificamos que esta red captura la interacción:
 
-```{r}
+```{r, fig.height=3, fig.width = 4}
 preds <- predict(mod_inter, dat %>% select(x1, x2) %>% as.matrix)
 dat <- dat %>% mutate(p_red = preds)
 ggplot(dat, aes(x=x1, y=x2)) + geom_tile(aes(fill = p_red))
@@ -480,7 +480,7 @@ decimos que la red es *completamente conexa*.
    c(1,4,1,5,1,6,2,4,2,5,2,6,2,4,2,5,2,6,3,4,3,5,3,6,4,7,4,8,5,7,5,8,6,7,6,8,7,8,7,9,8,9))
 plot(gr, layout=matrix(c(-1,1,-1,0,-1,-1,0,1,0,0,0,-1,1,0.5,1,-0.5,2,0), byrow=T,ncol=2),
      vertex.label=c(expression(a[1]^{(1)}), expression(a[2]^{(1)}),expression(a[3]^{(1)}),
-                    expression(a[1]^{(2)}),expression(a[2]^{(2)}),expression(a[3]^{(3)}),
+                    expression(a[1]^{(2)}),expression(a[2]^{(2)}),expression(a[3]^{(2)}),
                     expression(a[1]^{(3)}),expression(a[2]^{(3)}),                        expression(a[1]^{(4)})),
       vertex.size=30, vertex.color=c('salmon'), asp = 0.5, vertex.label.cex = 1.5,
      vertex.frame.color=NA, edge.curved=FALSE)
@@ -500,18 +500,16 @@ denotamos por:
 - $a^{(l)}_j$ el valor que toma la unidad $j$ de la capa $l$, para $j=0,1,\ldots, n_{l}$, donde
 $n_l$ es el número de unidades de la capa $l$.
 - Ponemos $a^{(l)}_0=1$ para lidiar con los sesgos.
-- *En particular, ponemos $a^{(1)}_j = x_j$, que son los valores de las entradas (primera capa)
-- Para clasificación binaria, la última capa solo tiene un elemento, que es
-$p_1 = a^{(L)}$. Para un problema de clasificación en $K>2$ clases, tenemos que 
+- Ponemos $a^{(1)}_j = x_j$, que son los valores de las entradas (primera capa)
+-  La última capa solo tiene un elemento, que es
+$f = a^{(L)}$. Si queremos predecir $K$ salidas, tenemos que 
 la última capa es de tamaño $K$:
-$p_1 = a^{(L)}_1, p_2 = a^{(L)}_2,\ldots,  p_K = a^{(L)}_K$
+$f_1 = a^{(L)}_1, f_2 = a^{(L)}_2,\ldots,  f_K = a^{(L)}_K$
 
 Adicionalmente, escribimos
 
-$\theta_{i,k}^{(l)}=$ es el peso de entrada $a_{k}^{(l-1)}$  de capa $l-1$ 
-en la entrada $a_{i}^{(l)}$ de la capa $l$.
-
-Los sesgos están dados por
+- $\theta_{i,k}^{(l)}$ es el peso de la entrada $a_{k}^{(l)}$  de la capa $l$ 
+- Los sesgos están dados por
 $$\theta_{i,0}^{(l)}$$
 
 #### Ejemplo {-}
@@ -623,7 +621,7 @@ a_3
 Para calcular los valores de salida de una red a partir de pesos y datos de entrada,
 usamos el algoritmo feed-forward, calculando capa por capa.
 
-```{block2, type='comentario'}
+```{block2, type='resumen'}
 Cálculo en redes: **Feed-forward**
 Para la primera capa,
 escribimos las variables de entrada:
@@ -635,14 +633,13 @@ $$a^{(l)}_j = h\left( \theta_{j,0}^{(l-1)}+ \sum_{k=1}^{n_{l-1}}  \theta_{j,k}^{
 y así sucesivamente. 
 Para la capa final o capa de salida (para problema binario), suponiendo
 que tenemos $L$ capas ($L-2$ capas ocultas):
-$$p_1 = h\left(    \theta_{1,0}^{(L-1)}+ \sum_{k=1}^{n_{L-1}}  \theta_{1,k}^{(L-1)}  a^{(L-1)}_k     \right).$$
+$$f =     \theta_{1,0}^{(L-1)}+ \sum_{k=1}^{n_{L-1}}  \theta_{1,k}^{(L-1)}  a^{(L-1)}_k .$$
 ```
-
 Nótese que entonces:
 
-```{block2, type='comentario'}
+```{block2, type='resumen'}
 Cada capa se caracteriza por el conjunto de parámetros $\Theta^{(l)}$, que es una matriz
-de $n_l\times n_{l-1}$.
+de $n_{l+1}\times n_{l}$.
 La red completa entonces se caracteriza por:
 - La estructura elegida (número de capas ocultas y número de nodos en cada capa oculta).
 - Las matrices de pesos en cada capa $\Theta^{(1)},\Theta^{(2)},\ldots, \Theta^{(L-1)}$
@@ -667,21 +664,19 @@ $$ a^{(2)} = h(\Theta^{(1)}a^{(1)})$$
 $$ a^{(l)} = h(\Theta^{(l-1)}a^{(l-1)})$$
 - Capa de salida:
     
-En un problema de clasificación binaria, la capa de salida se calcula como
-en regresión logística:
-$$a^{(L)}= p = h(\Theta^{(L-1)}a^{(L-1)})$$
-donde $h$ se aplica componente a componente sobre los vectores correspondientes. Nótese
+En un problema de regresión, la capa de salida se calcula como
+en regresión lineal:
+$$a^{(L)}= f = \Theta^{(L-1)}a^{(L-1)}.$$
+
+  Nótese
 que feed-foward consiste principalmente de multiplicaciones de matrices con
 algunas aplicaciones de $h$
     
-Para un problema de regresión, la última capa se calcula como en regresión lineal:
-    
-$$a^{(L)} = f = \Theta^{(L-1)}a^{(L-1)}$$
 ```
 
 
 
-## Algoritmo de Backpropagation: cálculo del gradiente (clasificación binaria)
+## Algoritmo de Backpropagation: cálculo del gradiente 
 
 Para ajustar los pesos y sesgos de las redes (valores $\theta$),
 utilizaremos descenso en gradiente y otros algoritmos derivados del gradiente
@@ -708,15 +703,14 @@ desde el final de red (capa de salida) hasta el principio, capa por capa.
 
 Recordamos la devianza (con regularización ridge) es
 
-$$D = -\frac{2}{n}\sum_{i=1}^n y_i\log(p_1(x_i)) +(1-y_i)\log(1-p_1(x_i)) + \lambda \sum_{l=2}^{L} \sum_{k=1}^{n_{l-1}} \sum_{j=1}^{n_l}(\theta_{j,k}^{(l)})^2.$$
+$$D = -\frac{1}{2n}\sum_{i=1}^n (y_i - f_i)^2 + \lambda \sum_{l=2}^{L} \sum_{k=1}^{n_{l-1}} \sum_{j=1}^{n_l}(\theta_{j,k}^{(l)})^2.$$
 
 
 Queremos entonces calcular las derivadas de la devianza con respecto a cada
 parámetro $\theta_{j,k}^{(l)}$. Esto nos proporciona el gradiente para
 nuestro algoritmo de descenso.
 
-**Consideramos aquí el problema de clasificación binaria con devianza como función
-de pérdida, y sin regularización**. La parte de la parcial que corresponde al término
+**Consideramos aquí el problema de mínimos cuadrados y sin regularización**. La parte de la parcial que corresponde al término
 de regularización es fácil de agregar al final.
 
 Recordamos también nuestra notación para la función logística (o sigmoide):
@@ -727,10 +721,10 @@ $$h'(z) = h(z)(1-h(z))$$
 
 ### Cálculo para un caso de entrenamiento {-}
 
-Como hicimos en regresión logística, primero simplificamos el problema 
+Primero simplificamos el problema 
 y consideramos calcular 
 las parciales *para un solo caso de entrenamiento* $(x,y)$:
-$$ D=  -\left ( y\log (p_1(x)) + (1-y)\log (1-p_1(x))\right) . $$
+$$ D=  -\frac{1}{2}(y-f)^2 . $$
 
 Después sumaremos sobre toda la muestra de entrenamiento. Entonces queremos
 calcular 
@@ -751,7 +745,7 @@ $$D=D(a_0^{(l+1)},a_1^{(l+1)},a_2^{(l+1)},\ldots, a_{n_{l+1}}^{(l+1)})=D(a_1^{(l
 
 Así que por la regla de la cadena para varias variables:
 $$\frac{\partial D}{\partial \theta_{j,k}^{(l)}} =
-\sum_{t=1}^{n_{l}} \frac{\partial D}{\partial a_t^{(l+1)}}\frac{\partial a_t^{(l+1)}}
+\sum_{t=1}^{n_{l+1}} \frac{\partial D}{\partial a_t^{(l+1)}}\frac{\partial a_t^{(l+1)}}
 {\partial \theta_{j,k}^{(l)} }$$
 
 Pero si vemos dónde aparece $\theta_{j,k}^{(l)}$ en la gráfica de la red:
@@ -777,7 +771,7 @@ y las $a_k^{(l)}$ no dependen de $\theta_{j,k}^{(l)}$, tenemos por la regla de l
 \end{equation}
 
 Esta última expresión podemos calcularla pues sólo requiere la derivada de $h$ y 
-los valores otenidos en el paso de feed-forward.
+los valores obtenidos en el paso de feed-forward.
 
 #### Paso 2: Obtener fórmula recursiva  {-}
 
@@ -825,6 +819,7 @@ conocemos por backpropagation.
 
 #### Paso 3: Simplificación de la recursión {-}
 
+Definimos (para $l < L-1$):
 
 \begin{equation}
 \delta_s^{ (l+1)}=\frac{\partial D}{\partial a_s^{(l+1)}} h'(z_s^{(l+1)})
@@ -856,7 +851,7 @@ para $j=1,2,\ldots, n_{l}$.
 
 Para la última capa, tenemos que (demostrar!)
 
-$$\delta_1^{(L)}=p - y.$$
+$$\delta_1^{(L)}=f - y.$$
 
 #### Paso 5: Cálculo de parciales {-}
 
@@ -872,7 +867,7 @@ Muchas veces es útil escribir una versión vectorizada (importante para impleme
 #### Paso 6: Versión matricial {-}
 
 Ahora podemos escribir estas ecuaciones en forma vectorial. En primer lugar,
-$$\delta^{(L)}=p-y.$$
+$$\delta^{(L)}=f-y.$$
 Y además se puede ver de la ecuación \@ref(eq:delta-recursion) que 
 ($\Theta_{*}^{(l+1)}$ denota la matriz de pesos *sin* la columna correspondiente al sesgo):
 
@@ -891,6 +886,7 @@ de manera recursiva.
 ```{block2, type='comentario'}
 **Backpropagation** Para problema de clasificación con regularización $ \lambda \geq 0 $.
 Para $i=1,\ldots, N,$ tomamos el dato de entrenamiento  $(x^{(i)}, y^{(i)})$ y hacemos:
+
 1. Ponemos $a^{(1)}=x^{(i)}$ (vector de entradas, incluyendo 1).
 2. Calculamos $a^{(2)},a^{(3)},\ldots, a^{(L)}$ usando feed forward para la entrada $x^{(i)}.$
 3. Calculamos $\delta^{(L)}=a^{(L)}-y^{(i)}$, y luego
@@ -898,9 +894,9 @@ $\delta^{(L-1)},\ldots, \delta^{(2)}$ según la recursión \@ref(eq:delta-recurs
 4. Acumulamos
 $\Delta_{j,k}^{(l)}=\Delta_{j,k}^{(l)} + \delta_j^{(l+1)}a_k^{(l)}$.
 5. Finalmente, ponemos, si $k\neq 0$,
-$$D_{j,k}^{(l)} = \frac{2}{N}\Delta_{j,k}^{(l)} + 2\lambda\theta_{j,k}^{(l)}$$
+$$D_{j,k}^{(l)} = \frac{1}{N}\Delta_{j,k}^{(l)} + 2\lambda\theta_{j,k}^{(l)}$$
 y si $k=0$,
-$$D_{j,k}^{(l)} = \frac{2}{N}\Delta_{j,k}^{(l)} .$$
+$$D_{j,k}^{(l)} = \frac{1}{N}\Delta_{j,k}^{(l)} .$$
 Entonces:
 $$D_{j,k}^{(l)} =\frac{\partial D}{\partial \theta_{j,k}^{(l)}}.$$
  Nótese
@@ -995,3 +991,4 @@ para afinar estos parámetros según validación cruzada o una muestra de valida
 
 
 ## Ejemplo
+
