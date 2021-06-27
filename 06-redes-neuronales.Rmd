@@ -1318,7 +1318,7 @@ demasiado grandes) y tenga dificultad para moverse.
 
 ## Mejoras al algoritmo de descenso estocástico.
 
-### Decaimiento de tasa de aprendizaje
+### Decaimiento de tasa de aprendizaje {-}
 
 Hay muchos algoritmos derivados de descenso estocástico. La primera mejora consiste en reducir gradualmente la tasa de aprendizaje
 para aprender rápido al principio, pero filtrar el ruido de la
@@ -1384,7 +1384,7 @@ lugar con función pérdida alta (sobreajusta rápidamente).
 - Un valor demasiado bajo produce convergencia lenta.
 ```
 
-### Momento
+### Momento {-}
 
 También es posible utilizar una idea adicional que acelera
 la convergencia. La idea es que muchas veces la aleatoriedad
@@ -1473,15 +1473,17 @@ velocidades a lo largo de iteraciones.
 
 Valores típicos para momento son 0,0.5,0.9 o 0.99.
 
-### Otras variaciones
+### Otras variaciones {-}
 
 Otras variaciones incluyen usar una tasa adaptativa de aprendizaje
-por cada parámetro (algoritmos adagrad, rmsprop, adam y adamax), o 
+por cada parámetro (algoritmos **adagrad, rmsprop, adam y adamax**), o 
 actualizaciones de momento un poco diferentes (Nesterov). 
 
 Los más comunes
 son descenso estocástico, descenso estocástico con momento (a veces con la modificación de Nesterov),
 rmsprop y adam (Capítulo 8 del Deep Learning Book, [@Goodfellow-et-al-2016]).
+Por ejemplo, muchas veces se recomienda usar *adam* para redes profundas,
+o gradiente estocástico con momento.
 
 
 ## Ajuste de redes con descenso estocástico
