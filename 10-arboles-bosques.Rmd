@@ -39,7 +39,6 @@ library(tidymodels)
 theme_set(theme_minimal(base_size = 14))
 cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 knitr::include_graphics('./figuras/arboles_1.png')
-#install.packages(c("baguette", "rpart.plot", "doParallel", "doFuture"))
 ```
 
 - Con este árbol podemos clasificar nuevos hogares.
@@ -55,7 +54,7 @@ de variables de entrada).
 a mano, con los árboles intentamos encontrarlos de manera automática.
 
 
-### Árboles para clasificación
+## Árboles para clasificación
 
 Un árbol particiona el espacio de entradas en rectángulos paralelos a los
 ejes, y hace predicciones basadas en un modelo simple dentro de
@@ -81,7 +80,7 @@ chicos, o en otras árboles grandes que después podamos para no sobreajustar.
 común en cada nodo terminal (la de máxima probabilidad).
 
 
-### Tipos de partición
+### Tipos de partición {-}
 
 Supongamos que tenemos variables de entrada $(X_1,\ldots, X_p)$. Recursivamente
 particionamos cada nodo escogiendo entre particiones tales que:
@@ -99,7 +98,7 @@ clases lo mejor que se pueda (sin considerar qué pasa en cortes hechos
 más adelante). En un nodo dado, escogemos la partición que 
 **reduce lo más posible su impureza**.
 
-### Medidas de impureza
+### Medidas de impureza {-}
 
 Consideramos un nodo $t$ de un árbol $T$, y sean $p_1(t),\ldots, p_K(t)$ las
 proporciones de casos de $t$ que caen en cada categoría.
@@ -111,8 +110,12 @@ Este medida se llama entropía. Hay otras posibilidades como medida
 de impureza (por ejemplo, coeficiente de Gini).
 ```
 
+Observación: esta medida es proporcional a la pérdida logarítmica, que es el objetivo de
+optimización en regresión logística (en dos o más clases), pues cuenta una penalización
+de $-\log p_j(t)$ para los casos de la clase $j$. En el caso de los árboles, minimizamos
+esta pérdida al intentar hacer cada corte individual.
 
-#### Ejemplo
+#### Ejemplo {-}
 Graficamos la medida de impureza para dos clases:
 ```{r, fig.width=5, fig.height=4}
 impureza <- function(p){
@@ -128,7 +131,7 @@ cuando en el nodo solo hay casos de una clase. Nótese que esta cantidad es prop
 
 
 
-### Reglas de partición y tamaño del árobl
+### Reglas de partición y tamaño del árbol {-}
 
 Podemos escribir la regla de partición, que se aplica a cada nodo de un árbol
 
@@ -183,6 +186,7 @@ Lo que resta explicar es qué criterio de paro utilizamos para dejar de particio
 ```{block2, type='comentario'}
 **Regla de paro**
 Cuando usemos árboles en ótros métodos, generalmente hay dos opciones:
+  
 - Particionar hasta cierta profundidad fija (por ejemplo, máximo 8 nodos terminales). Este enfoque generalmente usa árboles relativamente chicos (se usa en boosting de árboles).
 - Dejar de particionar cuando encontramos un número mínimo de casos en un nodo (por ejemplo, 5 o 10 casos). Este enfoque resulta en árboles grandes, probablemente sobreajustados (se usa en bosques aleatorios).
   
@@ -255,7 +259,7 @@ preds_entrena <- predict(arbol_grande, spam_entrena, type = "prob") %>%
   bind_cols(spam_entrena %>% select(spam))
 preds_entrena %>% 
   metricas_spam(spam, .pred_no_spam, estimate = .pred_class) %>% 
-  mutate(across(is_double, round, 2))
+  mutate(across(where(is_double), round, 2))
 ```
 y en prueba:
 
@@ -270,7 +274,7 @@ preds_prueba %>%
 Y notamos la brecha grande entre prueba y entrenamiento, lo que sugiere sobreajuste. Este árbol es demasiado grande.
 
 
-### Costo - Complejidad (Breiman)
+### Costo - Complejidad (Breiman) {-}
 
 Una manera de escoger árboles del tamaño correcto es utilizando una medida inventada
 por Breiman para medir la calidad de un árbol. La complejidad
@@ -286,7 +290,6 @@ donde
 Esta medida de complejidad incluye qué tan bien clasifica el árbol
 en la muestra de entrenamiento, pero penaliza por el tamaño del árbol.
 
-
 Para escoger el tamaño del árbol correcto, definimos
 $T_\alpha \subset T$ como el subárbol de $T$ que
 minimiza la medida $C_\alpha (T_\alpha)$.
@@ -301,7 +304,7 @@ De modo que para $\alpha$ fija, el árbol $T_\alpha$ hace un
 balance entre error de entrenamiento y penalización por complejidad.
 
 
-#### Ejemplo
+#### Ejemplo {-}
 
 Podemos ver subárboles más chicos creados durante el procedimiento de división
 de nodos (prp está el paquete rpart.plot). En este caso
@@ -325,7 +328,7 @@ $T_{0.2}$, y ambos son subárboles del árbol gigante que construimos al princip
 
 
 
-```{block2, type='comentario'}
+```{block2, type='resumen'}
 Para podar un árbol con costo-complejidad, encontramos para
 cada $\alpha>0$ (coeficiente de complejidad) un árbol
 $T_\alpha\subset T$ que minimiza el costo-complejidad. Esto resulta
@@ -348,7 +351,7 @@ problema de varianza o sesgo?
 
 
 
-### Predicciones con CART
+### Predicciones con CART {-}
 
 En el método de poda usual y selección de complejidad seleccionamos
 la complejidad que minimiza el error de clasificación.
@@ -427,7 +430,7 @@ predict(arbol_podado_vc, spam_prueba, type = "prob") %>%
 
 
 
-### Árboles para regresión
+### Árboles para regresión {-}
 
 Para problemas de regresión, el criterio de pureza y la predicción
 en cada nodo terminal es diferente:
@@ -435,7 +438,7 @@ en cada nodo terminal es diferente:
 - En los nodos terminales usamos el promedio los casos de entrenamiento que caen en tal nodo (en lugar de la clase más común)
 - La impureza de define como varianza: si $t$ es un nodo, su impureza está dada por $\frac{1}{n(t)}\sum (y - m)^2$, donde la suma es sobre los casos que están en el nodo y $m$ es la media de las $y$'s del nodo.
 
-### Variabilidad en el proceso de construcción
+### Variabilidad en el proceso de construcción {-}
 
 Existe variabilidad considerable en el proceso de división, lo cual
 es una debilidad de los árboles.  Por ejemplo:
@@ -467,7 +470,7 @@ de árboles muchas veces distintas. Esto introduce varianza considerable
 en las predicciones.
 
 
-### Relaciones lineales
+### Relaciones lineales {-}
 
 Los árboles pueden requerir ser muy grandes para estimar apropiadamente
 relaciones lineales.
@@ -610,7 +613,7 @@ a una reducción modesta de varianza.
 malos clasificadores ¿Puedes pensar en un ejemplo donde empeora?
 
 
-### Ejemplo 
+### Ejemplo {-}
 Probemos con el ejemplo de spam. Construimos árboles con muestras bootstrap
 de los datos originales de entrenamiento:
 
@@ -758,7 +761,8 @@ se logra *introduciendo variabilidad en la construcción de los árboles* (esto 
 paradójico - pero la explicación está arriba: aunque la varianza empeora
 (de cada árbol), la decorrelación de árboles puede valer la pena).
 
-### Sabiduría de las masas
+### Sabiduría de las masas {-}
+
 Una explicación simple de este proceso que se cita frecuentemente es el fenómeno de
 la sabiduría de las masas: cuando promediamos estimaciones pobres de un gran número
 de personas (digamos ignorantes), obtenemos mejores estimaciones que cualquiera de
@@ -1237,7 +1241,7 @@ ggplot(intervalos, aes(x = area, ymin = lower, ymax = upper, y = SalePrice)) +
 
 
 
-### Ajustando árboles aleatorios.
+### Ajustando árboles aleatorios {-}
 
 - El parámetro más importante de afinar es usualmente $m$, el número de variables que se escogen
 al azar en cada nodo.
@@ -1255,7 +1259,7 @@ opción y el bosque resultante no necesariamente agrupa niveles de la variable.
 
 
 
-### Ventajas y desventajas de bosques aleatorios
+### Ventajas y desventajas de bosques aleatorios {-}
 
 Ventajas:
 
